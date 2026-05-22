@@ -48,6 +48,7 @@ describe("analytics", () => {
     expect(stats.totalSeconds).toBe(3000);
     expect(stats.completedBlocks).toBe(2);
     expect(stats.timeBySubject[0].id).toBe("math");
+    expect(stats.timeBySubject[0].color).toBe("var(--color-primary)");
     expect(stats.timeByTag[0].seconds).toBe(3000);
     expect(stats.timeByTag[0].color).toBe("var(--color-error)");
     expect(stats.notes[0].block.note).toBe("Chapter 4");

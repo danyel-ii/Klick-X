@@ -2,7 +2,7 @@
 
 import { clsx } from "clsx";
 import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode } from "react";
-import { resolveTagColor, resolveTagTextColor } from "@/lib/colors";
+import { resolveSubjectColor, resolveSubjectTextColor, resolveTagColor, resolveTagTextColor } from "@/lib/colors";
 import type { StudyBlock, Subject, Tag } from "@/lib/types";
 import { formatDuration, visibleElapsedSeconds } from "@/lib/timer";
 
@@ -75,9 +75,11 @@ export function SubjectPill({
   selected?: boolean;
   onClick?: () => void;
 }) {
+  const subjectColor = resolveSubjectColor(subject.color);
+  const subjectTextColor = resolveSubjectTextColor(subject.color);
   const content = (
     <>
-      <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: subject.color }} />
+      <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: subjectColor }} />
       <span className="min-w-0 truncate">{subject.name}</span>
     </>
   );
@@ -93,7 +95,7 @@ export function SubjectPill({
         "inline-flex min-w-0 max-w-full items-center gap-2 rounded-full border px-3 py-1.5 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]",
         selected ? "border-transparent text-white shadow-sm" : "border-[var(--app-border)] bg-[var(--card)] hover:bg-[var(--surface)]",
       )}
-      style={selected ? { backgroundColor: subject.color } : undefined}
+      style={selected ? { backgroundColor: subjectColor, color: subjectTextColor } : undefined}
     >
       {content}
     </button>

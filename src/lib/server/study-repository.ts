@@ -1,6 +1,6 @@
 import { neon, type NeonQueryFunction } from "@neondatabase/serverless";
 import { buildStatsSummary } from "@/lib/analytics";
-import { defaultTagColorValues, resolveTagColor, subjectColorValues } from "@/lib/colors";
+import { defaultTagColorValues, resolveSubjectColor, resolveTagColor, subjectColorValues } from "@/lib/colors";
 import { localDateKey } from "@/lib/date";
 import { detectLocale } from "@/lib/i18n";
 import { accumulateElapsed } from "@/lib/timer";
@@ -250,7 +250,7 @@ export async function seedDefaultSubjectsIfEmpty(locale: Locale) {
 
 export async function createSubject(input: { name: string; color: string; icon?: string }) {
   const now = nowIso();
-  const subject: Subject = { id: id("subject"), archivedAt: null, createdAt: now, updatedAt: now, ...input };
+  const subject: Subject = { id: id("subject"), archivedAt: null, createdAt: now, updatedAt: now, ...input, color: resolveSubjectColor(input.color) };
   await putSubject(subject);
   return subject;
 }
@@ -258,7 +258,8 @@ export async function createSubject(input: { name: string; color: string; icon?:
 export async function updateSubject(idValue: string, input: Partial<Pick<Subject, "name" | "color" | "icon">>) {
   const subject = (await listSubjects()).find((item) => item.id === idValue);
   if (!subject) return;
-  await putSubject({ ...subject, ...input, updatedAt: nowIso() });
+  const patch = input.color ? { ...input, color: resolveSubjectColor(input.color) } : input;
+  await putSubject({ ...subject, ...patch, updatedAt: nowIso() });
 }
 
 export async function archiveSubject(idValue: string) {

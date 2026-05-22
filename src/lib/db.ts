@@ -1,6 +1,6 @@
 import Dexie, { type Table } from "dexie";
 import { buildStatsSummary } from "./analytics";
-import { defaultTagColorValues, resolveTagColor, subjectColorValues } from "./colors";
+import { defaultTagColorValues, resolveSubjectColor, resolveTagColor, subjectColorValues } from "./colors";
 import { detectLocale } from "./i18n";
 import { localDateKey } from "./date";
 import { accumulateElapsed } from "./timer";
@@ -141,13 +141,14 @@ export async function listSubjects() {
 
 export async function createSubject(input: { name: string; color: string; icon?: string }) {
   const now = nowIso();
-  const subject: Subject = { id: id("subject"), archivedAt: null, createdAt: now, updatedAt: now, ...input };
+  const subject: Subject = { id: id("subject"), archivedAt: null, createdAt: now, updatedAt: now, ...input, color: resolveSubjectColor(input.color) };
   await db.subjects.add(subject);
   return subject;
 }
 
 export async function updateSubject(idValue: string, input: Partial<Pick<Subject, "name" | "color" | "icon">>) {
-  await db.subjects.update(idValue, { ...input, updatedAt: nowIso() });
+  const patch = input.color ? { ...input, color: resolveSubjectColor(input.color) } : input;
+  await db.subjects.update(idValue, { ...patch, updatedAt: nowIso() });
 }
 
 export async function archiveSubject(idValue: string) {

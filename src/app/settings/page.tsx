@@ -3,7 +3,7 @@
 import { ChangeEvent, useRef, useState } from "react";
 import { ArchiveRestore, Download, LogOut, Pencil, RotateCcw, Trash2, Upload, X } from "lucide-react";
 import { Button, Input, PageHeader, SurfaceCard, TagPill, SubjectPill } from "@/components/ui";
-import { resolveTagColor, subjectColorOptions, tagThemeColorOptions, tagThemeColorValues } from "@/lib/colors";
+import { resolveSubjectColor, resolveTagColor, subjectColorOptions, tagThemeColorOptions, tagThemeColorValues } from "@/lib/colors";
 import { useAppStore } from "@/lib/store";
 import { daisyThemes, formatThemeName } from "@/lib/themes";
 import type { ExportPayload, Locale, StartOfWeek, Subject, Tag, Theme } from "@/lib/types";
@@ -82,7 +82,7 @@ export default function SettingsPage() {
           >
             <div className="flex min-w-0 flex-wrap items-start gap-2">
               <Input aria-label={t.settings.name} value={subjectName} onChange={(event) => setSubjectName(event.target.value)} placeholder={t.settings.name} className="min-w-44 flex-1 basis-60" />
-              <ColorSelect value={subjectColor} onChange={setSubjectColor} options={subjectColorOptions} />
+              <ColorSelect value={subjectColor} onChange={setSubjectColor} options={subjectColorOptions} resolveColor={resolveSubjectColor} />
               <Button type="submit" className="shrink-0 whitespace-nowrap">
                 {t.settings.addSubject}
               </Button>
@@ -276,7 +276,7 @@ function SubjectRow({
   const { t } = useAppStore();
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(subject.name);
-  const [color, setColor] = useState(subject.color);
+  const [color, setColor] = useState(resolveSubjectColor(subject.color));
 
   function save() {
     if (!name.trim()) return;
@@ -289,7 +289,7 @@ function SubjectRow({
       {editing ? (
         <div className="grid gap-3">
           <Input aria-label={t.settings.name} value={name} onChange={(event) => setName(event.target.value)} />
-          <ColorSelect value={color} onChange={setColor} options={subjectColorOptions} />
+          <ColorSelect value={color} onChange={setColor} options={subjectColorOptions} resolveColor={resolveSubjectColor} />
           <div className="flex flex-wrap gap-2">
             <Button type="button" onClick={save}>
               {t.actions.save}

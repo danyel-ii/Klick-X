@@ -1,5 +1,5 @@
 import { endOfWeek, format, parseISO, startOfWeek } from "date-fns";
-import { resolveTagColor } from "./colors";
+import { resolveSubjectColor, resolveTagColor } from "./colors";
 import { rangeStart } from "./date";
 import type {
   BreakdownItem,
@@ -123,7 +123,7 @@ export function buildStatsSummary({
     const seconds = studiedSeconds(block);
     if (!seconds) continue;
     const subject = subjectsById.get(block.subjectId);
-    upsertBreakdown(subjectMap, block.subjectId, subject?.name ?? "Unknown", subject?.color ?? "#64748b", seconds);
+    upsertBreakdown(subjectMap, block.subjectId, subject?.name ?? "Unknown", resolveSubjectColor(subject?.color), seconds);
     for (const tagId of block.tagIds) {
       const tag = tagsById.get(tagId);
       upsertBreakdown(tagMap, tagId, tag?.name ?? "Unknown", resolveTagColor(tag?.color), seconds);

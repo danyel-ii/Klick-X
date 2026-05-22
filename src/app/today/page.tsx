@@ -7,7 +7,9 @@ import { OnboardingDeck } from "@/components/OnboardingDeck";
 import { FocusScreensaver } from "@/components/FocusScreensaver";
 import { ActiveBlockPanel } from "@/components/ActiveBlockPanel";
 import { Button, PageHeader, SubjectPill, SurfaceCard, TagPill, Textarea } from "@/components/ui";
+import { resolveSubjectColor, resolveSubjectTextColor } from "@/lib/colors";
 import { localDateKey } from "@/lib/date";
+import { findPreviousSubjectNote } from "@/lib/notes";
 import { useAppStore } from "@/lib/store";
 import { formatDuration, visibleElapsedSeconds } from "@/lib/timer";
 import type { DayAssignment, StudyBlock } from "@/lib/types";
@@ -20,6 +22,7 @@ export default function TodayPage() {
     tags,
     today,
     todayBlocks,
+    allBlocks,
     startBlock,
     pauseBlock,
     completeBlock,
@@ -67,6 +70,7 @@ export default function TodayPage() {
               now={now}
               subjects={subjects}
               tags={tags}
+              allBlocks={allBlocks}
               onStart={() => void startBlock(block.id)}
               onPause={() => void pauseBlock(block.id)}
               onComplete={() => void completeBlock(block.id)}
@@ -179,6 +183,7 @@ function DailySetup({ subjects, tags }: { subjects: ReturnType<typeof useAppStor
           <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
             {assignments.map((assignment, index) => {
               const subject = subjects.find((item) => item.id === assignment.subjectId);
+              const subjectColor = resolveSubjectColor(subject?.color);
               return (
                 <motion.button
                   layout
@@ -189,12 +194,12 @@ function DailySetup({ subjects, tags }: { subjects: ReturnType<typeof useAppStor
                   className={`min-h-28 rounded-lg border p-3 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] ${
                     selectedSlot === index ? "border-[var(--accent)] bg-[var(--surface)]" : "border-dashed border-[var(--app-border)] bg-[var(--background)]/50"
                   }`}
-                  style={subject ? { borderColor: subject.color, boxShadow: selectedSlot === index ? `0 0 0 3px ${subject.color}22` : undefined } : undefined}
+                  style={subject ? { borderColor: subjectColor, boxShadow: selectedSlot === index ? `0 0 0 3px color-mix(in srgb, ${subjectColor} 14%, transparent)` : undefined } : undefined}
                 >
                   <span className="text-xs font-semibold uppercase tracking-wide text-[var(--muted)]">Block {index + 1}</span>
                   {subject ? (
                     <motion.div layoutId={`setup-subject-${subject.id}-${index}`} className="mt-3 flex items-center gap-2 font-semibold">
-                      <span className="h-3 w-3 rounded-full" style={{ backgroundColor: subject.color }} />
+                      <span className="h-3 w-3 rounded-full" style={{ backgroundColor: subjectColor }} />
                       {subject.name}
                     </motion.div>
                   ) : (
@@ -240,6 +245,7 @@ function StudyBlockCard({
   now,
   subjects,
   tags,
+  allBlocks,
   onStart,
   onPause,
   onComplete,
@@ -253,6 +259,7 @@ function StudyBlockCard({
   now: Date;
   subjects: ReturnType<typeof useAppStore.getState>["subjects"];
   tags: ReturnType<typeof useAppStore.getState>["tags"];
+  allBlocks: ReturnType<typeof useAppStore.getState>["allBlocks"];
   onStart: () => void;
   onPause: () => void;
   onComplete: () => void;
@@ -270,9 +277,9 @@ function StudyBlockCard({
   const elapsed = visibleElapsedSeconds(block, now);
   const activeTags = tags.filter((tag) => !tag.archivedAt);
   const activeSubjects = subjects.filter((subject) => !subject.archivedAt);
-  const subjectColor = subject?.color ?? "#64748b";
-  const readableText = readableTextColor(subjectColor);
-  const isDarkText = readableText === "#0f172a";
+  const subjectColor = resolveSubjectColor(subject?.color);
+  const previousSubjectNote = findPreviousSubjectNote(block, allBlocks);
+  const subjectTextColor = resolveSubjectTextColor(subject?.color);
   const stateClass =
     block.status === "active"
       ? "border-transparent shadow-lg"
@@ -285,14 +292,18 @@ function StudyBlockCard({
             : "border-[var(--app-border)] bg-[var(--surface)] opacity-55";
   const stateStyle =
     block.status === "active"
-      ? { backgroundColor: subjectColor, color: readableText, boxShadow: `0 0 0 1px ${subjectColor}66, 0 18px 50px ${subjectColor}40` }
+      ? {
+          backgroundColor: subjectColor,
+          color: subjectTextColor,
+          boxShadow: `0 0 0 1px color-mix(in srgb, ${subjectColor} 45%, transparent), 0 18px 50px color-mix(in srgb, ${subjectColor} 28%, transparent)`,
+        }
       : block.status === "planned"
         ? { borderColor: subjectColor, boxShadow: `inset 4px 0 0 ${subjectColor}` }
         : block.status === "paused"
           ? {
               borderColor: subjectColor,
               backgroundColor: `color-mix(in srgb, ${subjectColor} 20%, var(--card))`,
-              backgroundImage: `repeating-linear-gradient(135deg, ${subjectColor}22 0 8px, transparent 8px 16px)`,
+              backgroundImage: `repeating-linear-gradient(135deg, color-mix(in srgb, ${subjectColor} 14%, transparent) 0 8px, transparent 8px 16px)`,
             }
           : block.status === "skipped"
             ? { backgroundImage: "repeating-linear-gradient(135deg, transparent 0 8px, color-mix(in srgb, var(--muted) 18%, transparent) 8px 10px)" }
@@ -309,8 +320,8 @@ function StudyBlockCard({
       }`}
       style={stateStyle}
     >
-      {block.status === "active" ? <motion.div className="pointer-events-none absolute inset-0 rounded-lg" animate={reduceMotion ? undefined : { opacity: [0.18, 0.32, 0.18] }} transition={{ duration: 2.4, repeat: Infinity }} style={{ boxShadow: `inset 0 0 0 999px ${isDarkText ? "rgba(255,255,255,0.08)" : "rgba(255,255,255,0.03)"}` }} /> : null}
-      {block.status === "completed" && subject ? <span className="absolute right-3 top-3 h-3 w-3 rounded-full" style={{ backgroundColor: subject.color }} /> : null}
+      {block.status === "active" ? <motion.div className="pointer-events-none absolute inset-0 rounded-lg" animate={reduceMotion ? undefined : { opacity: [0.18, 0.32, 0.18] }} transition={{ duration: 2.4, repeat: Infinity }} style={{ boxShadow: "inset 0 0 0 999px rgba(255,255,255,0.05)" }} /> : null}
+      {block.status === "completed" && subject ? <span className="absolute right-3 top-3 h-3 w-3 rounded-full" style={{ backgroundColor: subjectColor }} /> : null}
       <div className="relative flex items-start justify-between gap-3">
         <div>
           <div className={`flex items-center gap-2 text-sm font-semibold ${block.status === "active" ? "" : "text-[var(--muted)]"}`}>
@@ -361,6 +372,17 @@ function StudyBlockCard({
               <NotebookPen className="h-4 w-4" aria-hidden />
               {t.today.notes}
             </label>
+            {previousSubjectNote ? (
+              <div className="mt-2 rounded-lg border border-[var(--app-border)] bg-[var(--surface)] p-3 text-sm">
+                <div className="flex flex-wrap items-center gap-2 text-xs font-semibold uppercase tracking-wide text-[var(--muted)]">
+                  <span>{t.today.previousSubjectNote}</span>
+                  <span>
+                    {previousSubjectNote.date} · Block {previousSubjectNote.index + 1}
+                  </span>
+                </div>
+                <p className="mt-2 whitespace-pre-wrap text-[var(--foreground)]">{previousSubjectNote.note}</p>
+              </div>
+            ) : null}
             <Textarea value={block.note ?? ""} onChange={(event) => onNote(event.target.value)} placeholder={t.today.notePlaceholder} className="mt-2 w-full bg-[var(--card)]/90" />
             <div className="mt-4 flex flex-wrap gap-2">
               {block.status === "active" ? (
@@ -387,14 +409,4 @@ function StudyBlockCard({
       </AnimatePresence>
     </motion.article>
   );
-}
-
-function readableTextColor(hex: string) {
-  const normalized = hex.replace("#", "");
-  if (normalized.length !== 6) return "#ffffff";
-  const red = Number.parseInt(normalized.slice(0, 2), 16);
-  const green = Number.parseInt(normalized.slice(2, 4), 16);
-  const blue = Number.parseInt(normalized.slice(4, 6), 16);
-  const luminance = (0.2126 * red + 0.7152 * green + 0.0722 * blue) / 255;
-  return luminance > 0.62 ? "#0f172a" : "#ffffff";
 }
