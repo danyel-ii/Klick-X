@@ -3,6 +3,7 @@ import { buildStatsSummary } from "@/lib/analytics";
 import { defaultTagColorValues, resolveSubjectColor, resolveTagColor, subjectColorValues } from "@/lib/colors";
 import { localDateKey } from "@/lib/date";
 import { detectLocale } from "@/lib/i18n";
+import { normalizeExportPayload } from "@/lib/import-validation";
 import { accumulateElapsed } from "@/lib/timer";
 import type {
   AppSettings,
@@ -508,20 +509,18 @@ export async function exportLocalData(): Promise<ExportPayload> {
 }
 
 export async function importLocalData(payload: ExportPayload) {
-  if (payload.version !== 1 || !Array.isArray(payload.subjects) || !Array.isArray(payload.studyBlocks)) {
-    throw new Error("Invalid import payload.");
-  }
+  const next = normalizeExportPayload(payload);
   const db = await readySql();
   await db`DELETE FROM study_blocks`;
   await db`DELETE FROM study_days`;
   await db`DELETE FROM subjects`;
   await db`DELETE FROM tags`;
   await db`DELETE FROM app_settings`;
-  for (const subject of payload.subjects) await putSubject(subject);
-  for (const tag of payload.tags) await putTag(tag);
-  for (const day of payload.studyDays) await putDay(day);
-  for (const block of payload.studyBlocks) await putBlock(block);
-  if (payload.settings) await updateSettings(payload.settings);
+  for (const subject of next.subjects) await putSubject(subject);
+  for (const tag of next.tags) await putTag(tag);
+  for (const day of next.studyDays) await putDay(day);
+  for (const block of next.studyBlocks) await putBlock(block);
+  if (next.settings) await updateSettings(next.settings);
 }
 
 export async function resetLocalData() {

@@ -25,4 +25,9 @@ describe("auth", () => {
     const token = await createAuthToken(now);
     await expect(verifyAuthToken(token, now + 31 * 24 * 60 * 60 * 1000)).resolves.toBe(false);
   });
+
+  it("treats malformed session tokens as unauthenticated instead of throwing", async () => {
+    await expect(verifyAuthToken("not-base64.%%%")).resolves.toBe(false);
+    await expect(verifyAuthToken("only-one-part")).resolves.toBe(false);
+  });
 });

@@ -11,8 +11,7 @@ function isPublicPath(pathname: string) {
     pathname === "/favicon.ico" ||
     pathname === "/icon.svg" ||
     pathname === "/manifest.webmanifest" ||
-    pathname === "/sw.js" ||
-    /\.(?:svg|png|jpg|jpeg|gif|webp|ico|css|js|map|woff2?)$/i.test(pathname)
+    pathname === "/sw.js"
   );
 }
 

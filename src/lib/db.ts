@@ -3,6 +3,7 @@ import { buildStatsSummary } from "./analytics";
 import { defaultTagColorValues, resolveSubjectColor, resolveTagColor, subjectColorValues } from "./colors";
 import { detectLocale } from "./i18n";
 import { localDateKey } from "./date";
+import { normalizeExportPayload } from "./import-validation";
 import { accumulateElapsed } from "./timer";
 import type {
   AppSettings,
@@ -360,16 +361,14 @@ export async function exportLocalData(): Promise<ExportPayload> {
 }
 
 export async function importLocalData(payload: ExportPayload) {
-  if (payload.version !== 1 || !Array.isArray(payload.subjects) || !Array.isArray(payload.studyBlocks)) {
-    throw new Error("Invalid import payload.");
-  }
+  const next = normalizeExportPayload(payload);
   await db.transaction("rw", [db.subjects, db.tags, db.studyDays, db.studyBlocks, db.settings], async () => {
     await Promise.all([db.subjects.clear(), db.tags.clear(), db.studyDays.clear(), db.studyBlocks.clear(), db.settings.clear()]);
-    await db.subjects.bulkPut(payload.subjects);
-    await db.tags.bulkPut(payload.tags.map((tag) => ({ ...tag, color: resolveTagColor(tag.color) })));
-    await db.studyDays.bulkPut(payload.studyDays);
-    await db.studyBlocks.bulkPut(payload.studyBlocks);
-    if (payload.settings) await db.settings.put(payload.settings);
+    await db.subjects.bulkPut(next.subjects);
+    await db.tags.bulkPut(next.tags.map((tag) => ({ ...tag, color: resolveTagColor(tag.color) })));
+    await db.studyDays.bulkPut(next.studyDays);
+    await db.studyBlocks.bulkPut(next.studyBlocks);
+    if (next.settings) await db.settings.put(next.settings);
   });
 }
 

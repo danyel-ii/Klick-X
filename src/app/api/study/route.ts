@@ -1,25 +1,36 @@
 import { NextResponse } from "next/server";
+import { isAuthorizedRequest, unauthorized } from "@/lib/server/api-auth";
 import * as repo from "@/lib/server/study-repository";
 import type { ExportPayload, Locale, StatsFilters, Subject, Tag } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
-function unavailable(error: unknown) {
+function apiError(error: unknown) {
   const message = error instanceof Error ? error.message : "Database unavailable.";
+  if (message.startsWith("Invalid import payload") || message === "Every planned block needs a subject.") {
+    return NextResponse.json({ error: message }, { status: 400 });
+  }
   return NextResponse.json({ error: message }, { status: 503 });
 }
 
-export async function GET() {
+export async function GET(request: Request) {
+  if (!(await isAuthorizedRequest(request))) return unauthorized();
+
   try {
     return NextResponse.json(await repo.getSnapshot());
   } catch (error) {
-    return unavailable(error);
+    return apiError(error);
   }
 }
 
 export async function POST(request: Request) {
+  if (!(await isAuthorizedRequest(request))) return unauthorized();
+
   try {
-    const body = (await request.json()) as { action: string; payload?: unknown };
+    const body = (await request.json().catch(() => null)) as { action?: unknown; payload?: unknown } | null;
+    if (!body || typeof body.action !== "string") {
+      return NextResponse.json({ error: "Valid action is required." }, { status: 400 });
+    }
     const payload = body.payload as Record<string, unknown> | undefined;
 
     switch (body.action) {
@@ -93,6 +104,7 @@ export async function POST(request: Request) {
         await repo.importLocalData(payload?.payload as ExportPayload);
         break;
       case "resetLocalData":
+        if (payload?.confirm !== "RESET") return NextResponse.json({ error: "Reset confirmation is required." }, { status: 400 });
         await repo.resetLocalData();
         break;
       default:
@@ -101,15 +113,18 @@ export async function POST(request: Request) {
 
     return NextResponse.json(await repo.getSnapshot());
   } catch (error) {
-    return unavailable(error);
+    return apiError(error);
   }
 }
 
 export async function PUT(request: Request) {
+  if (!(await isAuthorizedRequest(request))) return unauthorized();
+
   try {
-    const filters = (await request.json()) as StatsFilters;
+    const filters = (await request.json().catch(() => null)) as StatsFilters | null;
+    if (!filters) return NextResponse.json({ error: "Valid filters are required." }, { status: 400 });
     return NextResponse.json(await repo.getStats(filters));
   } catch (error) {
-    return unavailable(error);
+    return apiError(error);
   }
 }

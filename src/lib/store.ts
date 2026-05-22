@@ -62,6 +62,35 @@ type AppState = {
   resetLocalData: () => Promise<void>;
 };
 
+class RemoteRequestError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly fallbackAllowed: boolean,
+  ) {
+    super(message);
+    this.name = "RemoteRequestError";
+  }
+}
+
+function fallbackAllowedFor(status: number, message: string) {
+  return status === 503 && message.includes("DATABASE_URL is not configured");
+}
+
+async function throwRemoteError(response: Response, fallbackMessage: string): Promise<never> {
+  const body = (await response.json().catch(() => null)) as { error?: string } | null;
+  const message = body?.error ?? fallbackMessage;
+  throw new RemoteRequestError(message, response.status, fallbackAllowedFor(response.status, message));
+}
+
+function shouldUseLocalFallback(error: unknown) {
+  return error instanceof TypeError || (error instanceof RemoteRequestError && error.fallbackAllowed);
+}
+
+function assertLocalFallbackAllowed(error: unknown) {
+  if (!shouldUseLocalFallback(error)) throw error;
+}
+
 async function loadSnapshot() {
   const settings = await data.getSettings();
   await data.seedDefaultSubjectsIfEmpty(settings.locale);
@@ -80,7 +109,7 @@ async function loadSnapshot() {
 
 async function loadRemoteSnapshot() {
   const response = await fetch("/api/study", { cache: "no-store" });
-  if (!response.ok) throw new Error("Remote database is unavailable.");
+  if (!response.ok) await throwRemoteError(response, "Remote database is unavailable.");
   return (await response.json()) as AppSnapshot;
 }
 
@@ -90,7 +119,7 @@ async function remoteMutation(action: string, payload?: unknown) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ action, payload }),
   });
-  if (!response.ok) throw new Error("Remote database mutation failed.");
+  if (!response.ok) await throwRemoteError(response, "Remote database mutation failed.");
   return (await response.json()) as AppSnapshot;
 }
 
@@ -100,7 +129,7 @@ async function remoteStats(filters: StatsFilters) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(filters),
   });
-  if (!response.ok) throw new Error("Remote database stats failed.");
+  if (!response.ok) await throwRemoteError(response, "Remote database stats failed.");
   return (await response.json()) as StatsSummary;
 }
 
@@ -127,21 +156,24 @@ export const useAppStore = create<AppState>((set, get) => ({
   initialize: async () => {
     try {
       set(stateFromSnapshot(await loadRemoteSnapshot()));
-    } catch {
+    } catch (error) {
+      assertLocalFallbackAllowed(error);
       set(stateFromSnapshot(await loadSnapshot()));
     }
   },
   refresh: async () => {
     try {
       set(stateFromSnapshot(await loadRemoteSnapshot()));
-    } catch {
+    } catch (error) {
+      assertLocalFallbackAllowed(error);
       set(stateFromSnapshot(await loadSnapshot()));
     }
   },
   setLocale: async (locale) => {
     try {
       set(stateFromSnapshot(await remoteMutation("setLocale", { locale })));
-    } catch {
+    } catch (error) {
+      assertLocalFallbackAllowed(error);
       await data.setLocale(locale);
       await get().refresh();
     }
@@ -149,7 +181,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   updateSettings: async (patch) => {
     try {
       set(stateFromSnapshot(await remoteMutation("updateSettings", { patch })));
-    } catch {
+    } catch (error) {
+      assertLocalFallbackAllowed(error);
       await data.updateSettings(patch);
       await get().refresh();
     }
@@ -157,7 +190,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   completeOnboarding: async () => {
     try {
       set(stateFromSnapshot(await remoteMutation("completeOnboarding")));
-    } catch {
+    } catch (error) {
+      assertLocalFallbackAllowed(error);
       await data.completeOnboarding();
       await get().refresh();
     }
@@ -165,7 +199,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   resetOnboarding: async () => {
     try {
       set(stateFromSnapshot(await remoteMutation("resetOnboarding")));
-    } catch {
+    } catch (error) {
+      assertLocalFallbackAllowed(error);
       await data.resetOnboarding();
       await get().refresh();
     }
@@ -173,7 +208,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   createSubject: async (input) => {
     try {
       set(stateFromSnapshot(await remoteMutation("createSubject", { input })));
-    } catch {
+    } catch (error) {
+      assertLocalFallbackAllowed(error);
       await data.createSubject(input);
       await get().refresh();
     }
@@ -181,7 +217,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   updateSubject: async (id, input) => {
     try {
       set(stateFromSnapshot(await remoteMutation("updateSubject", { id, input })));
-    } catch {
+    } catch (error) {
+      assertLocalFallbackAllowed(error);
       await data.updateSubject(id, input);
       await get().refresh();
     }
@@ -189,7 +226,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   archiveSubject: async (id) => {
     try {
       set(stateFromSnapshot(await remoteMutation("archiveSubject", { id })));
-    } catch {
+    } catch (error) {
+      assertLocalFallbackAllowed(error);
       await data.archiveSubject(id);
       await get().refresh();
     }
@@ -197,7 +235,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   restoreSubject: async (id) => {
     try {
       set(stateFromSnapshot(await remoteMutation("restoreSubject", { id })));
-    } catch {
+    } catch (error) {
+      assertLocalFallbackAllowed(error);
       await data.restoreSubject(id);
       await get().refresh();
     }
@@ -205,7 +244,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   deleteSubject: async (id, force = false) => {
     try {
       set(stateFromSnapshot(await remoteMutation("deleteSubject", { id, force })));
-    } catch {
+    } catch (error) {
+      assertLocalFallbackAllowed(error);
       await data.deleteSubject(id, force);
       await get().refresh();
     }
@@ -213,7 +253,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   createTag: async (input) => {
     try {
       set(stateFromSnapshot(await remoteMutation("createTag", { input })));
-    } catch {
+    } catch (error) {
+      assertLocalFallbackAllowed(error);
       await data.createTag(input);
       await get().refresh();
     }
@@ -221,7 +262,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   updateTag: async (id, input) => {
     try {
       set(stateFromSnapshot(await remoteMutation("updateTag", { id, input })));
-    } catch {
+    } catch (error) {
+      assertLocalFallbackAllowed(error);
       await data.updateTag(id, input);
       await get().refresh();
     }
@@ -229,7 +271,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   archiveTag: async (id) => {
     try {
       set(stateFromSnapshot(await remoteMutation("archiveTag", { id })));
-    } catch {
+    } catch (error) {
+      assertLocalFallbackAllowed(error);
       await data.archiveTag(id);
       await get().refresh();
     }
@@ -237,7 +280,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   restoreTag: async (id) => {
     try {
       set(stateFromSnapshot(await remoteMutation("restoreTag", { id })));
-    } catch {
+    } catch (error) {
+      assertLocalFallbackAllowed(error);
       await data.restoreTag(id);
       await get().refresh();
     }
@@ -245,7 +289,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   deleteTag: async (id, force = false) => {
     try {
       set(stateFromSnapshot(await remoteMutation("deleteTag", { id, force })));
-    } catch {
+    } catch (error) {
+      assertLocalFallbackAllowed(error);
       await data.deleteTag(id, force);
       await get().refresh();
     }
@@ -253,7 +298,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   createOrUpdateDayPlan: async (date, plannedBlockCount, assignments) => {
     try {
       set(stateFromSnapshot(await remoteMutation("createOrUpdateDayPlan", { date, plannedBlockCount, assignments })));
-    } catch {
+    } catch (error) {
+      assertLocalFallbackAllowed(error);
       await data.createOrUpdateDayPlan(date, plannedBlockCount, assignments);
       await get().refresh();
     }
@@ -261,7 +307,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   startBlock: async (id) => {
     try {
       set(stateFromSnapshot(await remoteMutation("startBlock", { id })));
-    } catch {
+    } catch (error) {
+      assertLocalFallbackAllowed(error);
       await data.startBlock(id);
       await get().refresh();
     }
@@ -269,7 +316,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   pauseBlock: async (id) => {
     try {
       set(stateFromSnapshot(await remoteMutation("pauseBlock", { id })));
-    } catch {
+    } catch (error) {
+      assertLocalFallbackAllowed(error);
       await data.pauseBlock(id);
       await get().refresh();
     }
@@ -277,7 +325,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   completeBlock: async (id) => {
     try {
       set(stateFromSnapshot(await remoteMutation("completeBlock", { id })));
-    } catch {
+    } catch (error) {
+      assertLocalFallbackAllowed(error);
       await data.completeBlock(id);
       await get().refresh();
     }
@@ -285,7 +334,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   skipBlock: async (id) => {
     try {
       set(stateFromSnapshot(await remoteMutation("skipBlock", { id })));
-    } catch {
+    } catch (error) {
+      assertLocalFallbackAllowed(error);
       await data.skipBlock(id);
       await get().refresh();
     }
@@ -293,7 +343,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   updateBlockSubject: async (id, subjectId) => {
     try {
       set(stateFromSnapshot(await remoteMutation("updateBlockSubject", { id, subjectId })));
-    } catch {
+    } catch (error) {
+      assertLocalFallbackAllowed(error);
       await data.updateBlockSubject(id, subjectId);
       await get().refresh();
     }
@@ -301,7 +352,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   updateBlockTags: async (id, tagIds) => {
     try {
       set(stateFromSnapshot(await remoteMutation("updateBlockTags", { id, tagIds })));
-    } catch {
+    } catch (error) {
+      assertLocalFallbackAllowed(error);
       await data.updateBlockTags(id, tagIds);
       await get().refresh();
     }
@@ -309,7 +361,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   updateBlockNote: async (id, note) => {
     try {
       set(stateFromSnapshot(await remoteMutation("updateBlockNote", { id, note })));
-    } catch {
+    } catch (error) {
+      assertLocalFallbackAllowed(error);
       await data.updateBlockNote(id, note);
       await get().refresh();
     }
@@ -317,7 +370,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   loadStats: async (filters) => {
     try {
       set({ stats: await remoteStats(filters) });
-    } catch {
+    } catch (error) {
+      assertLocalFallbackAllowed(error);
       const state = get();
       if (state.hydrated) {
         set({
@@ -353,15 +407,17 @@ export const useAppStore = create<AppState>((set, get) => ({
   importLocalData: async (payload) => {
     try {
       set(stateFromSnapshot(await remoteMutation("importLocalData", { payload })));
-    } catch {
+    } catch (error) {
+      assertLocalFallbackAllowed(error);
       await data.importLocalData(payload);
       await get().refresh();
     }
   },
   resetLocalData: async () => {
     try {
-      set(stateFromSnapshot(await remoteMutation("resetLocalData")));
-    } catch {
+      set(stateFromSnapshot(await remoteMutation("resetLocalData", { confirm: "RESET" })));
+    } catch (error) {
+      assertLocalFallbackAllowed(error);
       await data.resetLocalData();
       await get().initialize();
     }

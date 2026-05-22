@@ -73,10 +73,10 @@ export async function verifyAuthToken(token?: string | null, now = Date.now()) {
   const [payload, signature] = token.split(".");
   if (!payload || !signature) return false;
 
-  const expected = await sign(payload);
-  if (!constantTimeEqual(base64UrlToBytes(signature), base64UrlToBytes(expected))) return false;
-
   try {
+    const expected = await sign(payload);
+    if (!constantTimeEqual(base64UrlToBytes(signature), base64UrlToBytes(expected))) return false;
+
     const session = JSON.parse(new TextDecoder().decode(base64UrlToBytes(payload))) as { sub?: string; exp?: number };
     return session.sub === authUserId() && typeof session.exp === "number" && session.exp > now;
   } catch {

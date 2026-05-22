@@ -35,6 +35,7 @@ export default function SettingsPage() {
   const [tagDescription, setTagDescription] = useState("");
   const [tagColor, setTagColor] = useState<string>(tagThemeColorValues[0]);
   const [resetText, setResetText] = useState("");
+  const [importError, setImportError] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
   const activeSubjects = subjects.filter((subject) => !subject.archivedAt);
   const activeTags = tags.filter((tag) => !tag.archivedAt);
@@ -55,9 +56,15 @@ export default function SettingsPage() {
   async function handleImport(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     if (!file) return;
-    const payload = JSON.parse(await file.text()) as ExportPayload;
-    await importLocalData(payload);
-    event.target.value = "";
+    setImportError("");
+    try {
+      const payload = JSON.parse(await file.text()) as ExportPayload;
+      await importLocalData(payload);
+    } catch {
+      setImportError(t.settings.importFailed);
+    } finally {
+      event.target.value = "";
+    }
   }
 
   async function handleSignOut() {
@@ -246,11 +253,19 @@ export default function SettingsPage() {
             </Button>
             <input ref={fileRef} type="file" accept="application/json" hidden onChange={(event) => void handleImport(event)} />
           </div>
+          {importError ? <p className="mt-3 text-sm font-semibold text-[var(--destructive)]">{importError}</p> : null}
           <h3 className="mt-8 font-bold">{t.settings.advancedReset}</h3>
           <p className="mt-2 text-sm text-[var(--muted)]">{t.settings.resetConfirm}</p>
           <div className="mt-3 flex min-w-0 flex-wrap gap-2">
             <Input value={resetText} onChange={(event) => setResetText(event.target.value)} aria-label="Reset confirmation" className="min-w-44 flex-1 basis-52" />
-            <Button variant="danger" disabled={resetText !== "RESET"} onClick={() => void resetLocalData()} className="shrink-0 whitespace-nowrap">
+            <Button
+              variant="danger"
+              disabled={resetText !== "RESET"}
+              onClick={() => {
+                void resetLocalData().then(() => setResetText(""));
+              }}
+              className="shrink-0 whitespace-nowrap"
+            >
               {t.actions.reset}
             </Button>
           </div>
