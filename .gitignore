@@ -17,3 +17,7 @@ out/
 
 # System files
 .DS_Store
+
+# TypeScript
+*.tsbuildinfo
+next-env.d.ts
