@@ -1,6 +1,6 @@
 import Dexie, { type Table } from "dexie";
 import { buildStatsSummary } from "./analytics";
-import { defaultTagColorValues, subjectColorValues } from "./colors";
+import { defaultTagColorValues, resolveTagColor, subjectColorValues } from "./colors";
 import { detectLocale } from "./i18n";
 import { localDateKey } from "./date";
 import { accumulateElapsed } from "./timer";
@@ -174,13 +174,14 @@ export async function listTags() {
 
 export async function createTag(input: { name: string; color: string; description?: string }) {
   const now = nowIso();
-  const tag: Tag = { id: id("tag"), archivedAt: null, createdAt: now, updatedAt: now, ...input };
+  const tag: Tag = { id: id("tag"), archivedAt: null, createdAt: now, updatedAt: now, ...input, color: resolveTagColor(input.color) };
   await db.tags.add(tag);
   return tag;
 }
 
 export async function updateTag(idValue: string, input: Partial<Pick<Tag, "name" | "color" | "description">>) {
-  await db.tags.update(idValue, { ...input, updatedAt: nowIso() });
+  const patch = input.color ? { ...input, color: resolveTagColor(input.color) } : input;
+  await db.tags.update(idValue, { ...patch, updatedAt: nowIso() });
 }
 
 export async function archiveTag(idValue: string) {
@@ -364,7 +365,7 @@ export async function importLocalData(payload: ExportPayload) {
   await db.transaction("rw", [db.subjects, db.tags, db.studyDays, db.studyBlocks, db.settings], async () => {
     await Promise.all([db.subjects.clear(), db.tags.clear(), db.studyDays.clear(), db.studyBlocks.clear(), db.settings.clear()]);
     await db.subjects.bulkPut(payload.subjects);
-    await db.tags.bulkPut(payload.tags);
+    await db.tags.bulkPut(payload.tags.map((tag) => ({ ...tag, color: resolveTagColor(tag.color) })));
     await db.studyDays.bulkPut(payload.studyDays);
     await db.studyBlocks.bulkPut(payload.studyBlocks);
     if (payload.settings) await db.settings.put(payload.settings);

@@ -43,9 +43,18 @@ function normalizeColor(color?: string | null) {
   return color?.trim().toLowerCase() ?? "";
 }
 
+function fallbackThemeColor(color: string) {
+  if (!color) return tagThemeColorValues[0];
+  const hash = [...color].reduce((total, character) => total + character.charCodeAt(0), 0);
+  return tagThemeColorValues[hash % tagThemeColorValues.length];
+}
+
 export function resolveTagColor(color?: string | null) {
   const normalized = normalizeColor(color);
-  return legacyTagColorMap.get(normalized) ?? color?.trim() ?? tagThemeColorValues[0];
+  const trimmed = color?.trim() ?? "";
+  if (legacyTagColorMap.has(normalized)) return legacyTagColorMap.get(normalized) ?? tagThemeColorValues[0];
+  if (tagThemeColorValues.includes(trimmed as (typeof tagThemeColorValues)[number])) return trimmed;
+  return fallbackThemeColor(normalized);
 }
 
 export function readableTextColor(color: string) {

@@ -14,4 +14,9 @@ describe("colors", () => {
     expect(tagThemeColorValues).toContain("var(--color-primary)");
     expect(resolveTagTextColor("var(--color-primary)")).toBe("var(--color-primary-content)");
   });
+
+  it("keeps arbitrary tag colors inside the DaisyUI role palette", () => {
+    expect(tagThemeColorValues).toContain(resolveTagColor("#123456"));
+    expect(tagThemeColorValues).toContain(resolveTagColor("hotpink"));
+  });
 });

@@ -1,6 +1,6 @@
 import { neon, type NeonQueryFunction } from "@neondatabase/serverless";
 import { buildStatsSummary } from "@/lib/analytics";
-import { defaultTagColorValues, subjectColorValues } from "@/lib/colors";
+import { defaultTagColorValues, resolveTagColor, subjectColorValues } from "@/lib/colors";
 import { localDateKey } from "@/lib/date";
 import { detectLocale } from "@/lib/i18n";
 import { accumulateElapsed } from "@/lib/timer";
@@ -311,7 +311,7 @@ export async function seedDefaultTagsIfEmpty(locale: Locale) {
 
 export async function createTag(input: { name: string; color: string; description?: string }) {
   const now = nowIso();
-  const tag: Tag = { id: id("tag"), archivedAt: null, createdAt: now, updatedAt: now, ...input };
+  const tag: Tag = { id: id("tag"), archivedAt: null, createdAt: now, updatedAt: now, ...input, color: resolveTagColor(input.color) };
   await putTag(tag);
   return tag;
 }
@@ -319,7 +319,8 @@ export async function createTag(input: { name: string; color: string; descriptio
 export async function updateTag(idValue: string, input: Partial<Pick<Tag, "name" | "color" | "description">>) {
   const tag = (await listTags()).find((item) => item.id === idValue);
   if (!tag) return;
-  await putTag({ ...tag, ...input, updatedAt: nowIso() });
+  const patch = input.color ? { ...input, color: resolveTagColor(input.color) } : input;
+  await putTag({ ...tag, ...patch, updatedAt: nowIso() });
 }
 
 export async function archiveTag(idValue: string) {
