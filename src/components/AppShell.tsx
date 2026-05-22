@@ -5,7 +5,10 @@ import { usePathname } from "next/navigation";
 import { BarChart3, CalendarDays, Settings, TimerReset } from "lucide-react";
 import { clsx } from "clsx";
 import { useEffect } from "react";
+import { InstallPrompt } from "@/components/InstallPrompt";
+import { ServiceWorkerRegistration } from "@/components/ServiceWorkerRegistration";
 import { useAppStore } from "@/lib/store";
+import { isDaisyTheme, type DaisyTheme } from "@/lib/themes";
 
 const nav = [
   { href: "/today", key: "today" as const, icon: TimerReset },
@@ -17,26 +20,58 @@ const nav = [
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { initialize, hydrated, settings, t } = useAppStore();
+  const isLogin = pathname === "/login";
 
   useEffect(() => {
+    if (isLogin) return;
     initialize();
-  }, [initialize]);
+  }, [initialize, isLogin]);
 
   useEffect(() => {
+    if (isLogin) return;
     if (!settings) return;
     const root = document.documentElement;
     root.lang = settings.locale;
-    root.dataset.theme = settings.theme;
-  }, [settings]);
+    root.dataset.selectedTheme = settings.theme;
+
+    const getSystemTheme = (): DaisyTheme => (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+    const applyTheme = () => {
+      root.dataset.theme = settings.theme === "system" || !isDaisyTheme(settings.theme) ? getSystemTheme() : settings.theme;
+    };
+
+    applyTheme();
+
+    if (settings.theme !== "system") return;
+    const media = window.matchMedia("(prefers-color-scheme: dark)");
+    media.addEventListener("change", applyTheme);
+    return () => media.removeEventListener("change", applyTheme);
+  }, [isLogin, settings]);
+
+  if (isLogin) {
+    return (
+      <>
+        <ServiceWorkerRegistration />
+        {children}
+        <InstallPrompt />
+      </>
+    );
+  }
 
   if (!hydrated) {
-    return <main className="grid min-h-screen place-items-center bg-[var(--background)] text-[var(--muted)]">Study Blocks</main>;
+    return (
+      <>
+        <ServiceWorkerRegistration />
+        <main className="grid min-h-screen place-items-center bg-[var(--background)] text-[var(--muted)]">Study Blocks</main>
+        <InstallPrompt />
+      </>
+    );
   }
 
   return (
     <div className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">
+      <ServiceWorkerRegistration />
       <div className="mx-auto flex min-h-screen w-full max-w-7xl">
-        <aside className="sticky top-0 hidden h-screen w-64 shrink-0 border-r border-[var(--border)] bg-[var(--background)]/80 p-5 backdrop-blur md:block">
+        <aside className="sticky top-0 hidden h-screen w-64 shrink-0 border-r border-[var(--app-border)] bg-[var(--background)]/80 p-5 backdrop-blur md:block">
           <Link href="/today" className="block rounded-xl px-3 py-2 text-lg font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]">
             Study Blocks
           </Link>
@@ -62,7 +97,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </aside>
         <main className="w-full px-4 pb-24 pt-6 sm:px-6 md:px-8 md:pb-8">{children}</main>
       </div>
-      <nav className="fixed inset-x-0 bottom-0 z-20 border-t border-[var(--border)] bg-[var(--card)]/95 px-2 py-2 shadow-[0_-12px_30px_rgba(15,23,42,0.08)] backdrop-blur md:hidden" aria-label="Primary">
+      <nav className="fixed inset-x-0 bottom-0 z-20 border-t border-[var(--app-border)] bg-[var(--card)]/95 px-2 py-2 shadow-[0_-12px_30px_rgba(15,23,42,0.08)] backdrop-blur md:hidden" aria-label="Primary">
         <div className="mx-auto grid max-w-md grid-cols-4 gap-1">
           {nav.map((item) => {
             const Icon = item.icon;
@@ -83,6 +118,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           })}
         </div>
       </nav>
+      <InstallPrompt />
     </div>
   );
 }

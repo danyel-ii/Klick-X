@@ -12,6 +12,7 @@
   "dependencies": {
     "@neondatabase/serverless": "^1.1.0",
     "clsx": "^2.1.1",
+    "daisyui": "^5.5.20",
     "date-fns": "^4.2.1",
     "dexie": "^4.4.2",
     "framer-motion": "^12.40.0",

@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title">
+  <title id="title">Study Blocks</title>
+  <rect width="512" height="512" rx="112" fill="#020617"/>
+  <rect x="96" y="112" width="320" height="288" rx="48" fill="#f8fafc"/>
+  <rect x="128" y="148" width="112" height="88" rx="24" fill="#2563eb"/>
+  <rect x="272" y="148" width="112" height="88" rx="24" fill="#16a34a"/>
+  <rect x="128" y="268" width="112" height="88" rx="24" fill="#7c3aed"/>
+  <rect x="272" y="268" width="112" height="88" rx="24" fill="#d97706"/>
+</svg>

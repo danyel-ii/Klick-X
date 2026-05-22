@@ -5,7 +5,8 @@ import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { CheckCircle2, Circle, Minus, NotebookPen, Play, Plus, SkipForward } from "lucide-react";
 import { OnboardingDeck } from "@/components/OnboardingDeck";
 import { FocusScreensaver } from "@/components/FocusScreensaver";
-import { Button, PageHeader, SubjectPill, SurfaceCard, TagPill, Textarea, TimerRing } from "@/components/ui";
+import { ActiveBlockPanel } from "@/components/ActiveBlockPanel";
+import { Button, PageHeader, SubjectPill, SurfaceCard, TagPill, Textarea } from "@/components/ui";
 import { localDateKey } from "@/lib/date";
 import { useAppStore } from "@/lib/store";
 import { formatDuration, visibleElapsedSeconds } from "@/lib/timer";
@@ -51,6 +52,8 @@ export default function TodayPage() {
   const focusBlock = todayBlocks.find((block) => block.id === focusBlockId);
   const focusSubject = subjects.find((subject) => subject.id === focusBlock?.subjectId);
   const focusTags = tags.filter((tag) => focusBlock?.tagIds.includes(tag.id));
+  const activeSubject = subjects.find((subject) => subject.id === activeBlock?.subjectId);
+  const activeBlockTags = tags.filter((tag) => activeBlock?.tagIds.includes(tag.id));
 
   return (
     <>
@@ -78,7 +81,7 @@ export default function TodayPage() {
         <SurfaceCard className="h-fit">
           <h2 className="text-lg font-bold">{t.today.activeBlock}</h2>
           {activeBlock ? (
-            <ActiveBlockPanel block={activeBlock} now={now} />
+            <ActiveBlockPanel block={activeBlock} now={now} subject={activeSubject} tags={activeBlockTags} />
           ) : (
             <p className="mt-3 text-sm text-[var(--muted)]">{todayBlocks.every((block) => block.status === "completed" || block.status === "skipped") ? t.today.allDone : t.today.noPlan}</p>
           )}
@@ -184,7 +187,7 @@ function DailySetup({ subjects, tags }: { subjects: ReturnType<typeof useAppStor
                   aria-pressed={selectedSlot === index}
                   onClick={() => setSelectedSlot(index)}
                   className={`min-h-28 rounded-lg border p-3 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] ${
-                    selectedSlot === index ? "border-[var(--accent)] bg-[var(--surface)]" : "border-dashed border-[var(--border)] bg-[var(--background)]/50"
+                    selectedSlot === index ? "border-[var(--accent)] bg-[var(--surface)]" : "border-dashed border-[var(--app-border)] bg-[var(--background)]/50"
                   }`}
                   style={subject ? { borderColor: subject.color, boxShadow: selectedSlot === index ? `0 0 0 3px ${subject.color}22` : undefined } : undefined}
                 >
@@ -208,7 +211,7 @@ function DailySetup({ subjects, tags }: { subjects: ReturnType<typeof useAppStor
               );
             })}
           </div>
-          <div className="mt-5 rounded-lg border border-[var(--border)] bg-[var(--surface)] p-3">
+          <div className="mt-5 rounded-lg border border-[var(--app-border)] bg-[var(--surface)] p-3">
             <p className="text-sm font-semibold text-[var(--muted)]">{t.today.chooseSubject}</p>
             <div className="mt-3 flex flex-wrap gap-2">
               {subjects.map((subject) => (
@@ -278,8 +281,8 @@ function StudyBlockCard({
         : block.status === "paused"
           ? "border-transparent"
           : block.status === "completed"
-            ? "border-[var(--border)] bg-[var(--surface)]"
-            : "border-[var(--border)] bg-[var(--surface)] opacity-55";
+            ? "border-[var(--app-border)] bg-[var(--surface)]"
+            : "border-[var(--app-border)] bg-[var(--surface)] opacity-55";
   const stateStyle =
     block.status === "active"
       ? { backgroundColor: subjectColor, color: readableText, boxShadow: `0 0 0 1px ${subjectColor}66, 0 18px 50px ${subjectColor}40` }
@@ -383,22 +386,6 @@ function StudyBlockCard({
         )}
       </AnimatePresence>
     </motion.article>
-  );
-}
-
-function ActiveBlockPanel({ block, now }: { block: StudyBlock; now: Date }) {
-  const subject = useAppStore((state) => state.subjects.find((item) => item.id === block.subjectId));
-  const tags = useAppStore((state) => state.tags.filter((tag) => block.tagIds.includes(tag.id)));
-  return (
-    <div className="mt-5 grid place-items-center text-center">
-      <TimerRing block={block} now={now} />
-      <h3 className="mt-4 text-xl font-bold">{subject?.name}</h3>
-      <div className="mt-3 flex flex-wrap justify-center gap-2">
-        {tags.map((tag) => (
-          <TagPill key={tag.id} tag={tag} />
-        ))}
-      </div>
-    </div>
   );
 }
 

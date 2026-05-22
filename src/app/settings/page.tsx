@@ -1,12 +1,12 @@
 "use client";
 
 import { ChangeEvent, useRef, useState } from "react";
-import { ArchiveRestore, Download, Pencil, RotateCcw, Trash2, Upload, X } from "lucide-react";
+import { ArchiveRestore, Download, LogOut, Pencil, RotateCcw, Trash2, Upload, X } from "lucide-react";
 import { Button, Input, PageHeader, SurfaceCard, TagPill, SubjectPill } from "@/components/ui";
+import { resolveTagColor, subjectColorOptions, tagThemeColorOptions, tagThemeColorValues } from "@/lib/colors";
 import { useAppStore } from "@/lib/store";
+import { daisyThemes, formatThemeName } from "@/lib/themes";
 import type { ExportPayload, Locale, StartOfWeek, Subject, Tag, Theme } from "@/lib/types";
-
-const colors = ["#2563eb", "#7c3aed", "#0891b2", "#16a34a", "#dc2626", "#d97706", "#0f766e", "#be123c"];
 
 export default function SettingsPage() {
   const {
@@ -30,10 +30,10 @@ export default function SettingsPage() {
     resetLocalData,
   } = useAppStore();
   const [subjectName, setSubjectName] = useState("");
-  const [subjectColor, setSubjectColor] = useState(colors[0]);
+  const [subjectColor, setSubjectColor] = useState<string>(subjectColorOptions[0].value);
   const [tagName, setTagName] = useState("");
   const [tagDescription, setTagDescription] = useState("");
-  const [tagColor, setTagColor] = useState(colors[2]);
+  const [tagColor, setTagColor] = useState<string>(tagThemeColorValues[0]);
   const [resetText, setResetText] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
   const activeSubjects = subjects.filter((subject) => !subject.archivedAt);
@@ -60,10 +60,15 @@ export default function SettingsPage() {
     event.target.value = "";
   }
 
+  async function handleSignOut() {
+    await fetch("/api/auth/logout", { method: "POST" });
+    window.location.assign("/login");
+  }
+
   return (
     <>
       <PageHeader title={t.settings.title} subtitle={t.settings.subtitle} />
-      <div className="grid gap-5 lg:grid-cols-2">
+      <div className="grid min-w-0 gap-5 lg:grid-cols-2">
         <SurfaceCard>
           <h2 className="text-lg font-bold">{t.settings.subjects}</h2>
           <form
@@ -75,10 +80,12 @@ export default function SettingsPage() {
               setSubjectName("");
             }}
           >
-            <div className="flex flex-col gap-2 sm:flex-row">
-              <Input aria-label={t.settings.name} value={subjectName} onChange={(event) => setSubjectName(event.target.value)} placeholder={t.settings.name} className="flex-1" />
-              <ColorSelect value={subjectColor} onChange={setSubjectColor} />
-              <Button type="submit">{t.settings.addSubject}</Button>
+            <div className="flex min-w-0 flex-wrap items-start gap-2">
+              <Input aria-label={t.settings.name} value={subjectName} onChange={(event) => setSubjectName(event.target.value)} placeholder={t.settings.name} className="min-w-44 flex-1 basis-60" />
+              <ColorSelect value={subjectColor} onChange={setSubjectColor} options={subjectColorOptions} />
+              <Button type="submit" className="shrink-0 whitespace-nowrap">
+                {t.settings.addSubject}
+              </Button>
             </div>
           </form>
           <div className="mt-4 grid gap-2">
@@ -131,10 +138,12 @@ export default function SettingsPage() {
               setTagDescription("");
             }}
           >
-            <div className="flex flex-col gap-2 sm:flex-row">
-              <Input aria-label={t.settings.name} value={tagName} onChange={(event) => setTagName(event.target.value)} placeholder={t.settings.name} className="flex-1" />
-              <ColorSelect value={tagColor} onChange={setTagColor} />
-              <Button type="submit">{t.settings.addTag}</Button>
+            <div className="flex min-w-0 flex-wrap items-start gap-2">
+              <Input aria-label={t.settings.name} value={tagName} onChange={(event) => setTagName(event.target.value)} placeholder={t.settings.name} className="min-w-44 flex-1 basis-60" />
+              <ColorSelect value={tagColor} onChange={setTagColor} options={tagThemeColorOptions} resolveColor={resolveTagColor} />
+              <Button type="submit" className="shrink-0 whitespace-nowrap">
+                {t.settings.addTag}
+              </Button>
             </div>
             <Input aria-label={t.settings.description} value={tagDescription} onChange={(event) => setTagDescription(event.target.value)} placeholder={t.settings.description} />
           </form>
@@ -181,22 +190,25 @@ export default function SettingsPage() {
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
             <label className="grid gap-1 text-sm font-semibold">
               {t.settings.language}
-              <select value={settings?.locale ?? "en"} onChange={(event) => void setLocale(event.target.value as Locale)} className="min-h-10 rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3">
+              <select value={settings?.locale ?? "en"} onChange={(event) => void setLocale(event.target.value as Locale)} className="min-h-10 rounded-lg border border-[var(--app-border)] bg-[var(--surface)] px-3">
                 <option value="en">English</option>
                 <option value="de">Deutsch</option>
               </select>
             </label>
             <label className="grid gap-1 text-sm font-semibold">
               {t.settings.theme}
-              <select value={settings?.theme ?? "system"} onChange={(event) => void updateSettings({ theme: event.target.value as Theme })} className="min-h-10 rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3">
+              <select value={settings?.theme ?? "system"} onChange={(event) => void updateSettings({ theme: event.target.value as Theme })} className="min-h-10 rounded-lg border border-[var(--app-border)] bg-[var(--surface)] px-3">
                 <option value="system">{t.settings.system}</option>
-                <option value="light">{t.settings.light}</option>
-                <option value="dark">{t.settings.dark}</option>
+                {daisyThemes.map((theme) => (
+                  <option key={theme} value={theme}>
+                    {theme === "light" ? t.settings.light : theme === "dark" ? t.settings.dark : formatThemeName(theme)}
+                  </option>
+                ))}
               </select>
             </label>
             <label className="grid gap-1 text-sm font-semibold">
               {t.settings.startOfWeek}
-              <select value={settings?.startOfWeek ?? "monday"} onChange={(event) => void updateSettings({ startOfWeek: event.target.value as StartOfWeek })} className="min-h-10 rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3">
+              <select value={settings?.startOfWeek ?? "monday"} onChange={(event) => void updateSettings({ startOfWeek: event.target.value as StartOfWeek })} className="min-h-10 rounded-lg border border-[var(--app-border)] bg-[var(--surface)] px-3">
                 <option value="monday">{t.settings.monday}</option>
                 <option value="sunday">{t.settings.sunday}</option>
               </select>
@@ -210,10 +222,16 @@ export default function SettingsPage() {
               <Input type="number" min={30} value={settings?.screensaverDelaySeconds ?? 180} onChange={(event) => void updateSettings({ screensaverDelaySeconds: Number(event.target.value) })} />
             </label>
           </div>
-          <Button variant="secondary" className="mt-5" onClick={() => void resetOnboarding()}>
-            <RotateCcw className="h-4 w-4" aria-hidden />
-            {t.settings.replayOnboarding}
-          </Button>
+          <div className="mt-5 flex flex-wrap gap-2">
+            <Button variant="secondary" onClick={() => void resetOnboarding()}>
+              <RotateCcw className="h-4 w-4" aria-hidden />
+              {t.settings.replayOnboarding}
+            </Button>
+            <Button variant="secondary" onClick={() => void handleSignOut()}>
+              <LogOut className="h-4 w-4" aria-hidden />
+              {t.settings.signOut}
+            </Button>
+          </div>
         </SurfaceCard>
         <SurfaceCard>
           <h2 className="text-lg font-bold">{t.settings.importExport}</h2>
@@ -230,9 +248,9 @@ export default function SettingsPage() {
           </div>
           <h3 className="mt-8 font-bold">{t.settings.advancedReset}</h3>
           <p className="mt-2 text-sm text-[var(--muted)]">{t.settings.resetConfirm}</p>
-          <div className="mt-3 flex gap-2">
-            <Input value={resetText} onChange={(event) => setResetText(event.target.value)} aria-label="Reset confirmation" />
-            <Button variant="danger" disabled={resetText !== "RESET"} onClick={() => void resetLocalData()}>
+          <div className="mt-3 flex min-w-0 flex-wrap gap-2">
+            <Input value={resetText} onChange={(event) => setResetText(event.target.value)} aria-label="Reset confirmation" className="min-w-44 flex-1 basis-52" />
+            <Button variant="danger" disabled={resetText !== "RESET"} onClick={() => void resetLocalData()} className="shrink-0 whitespace-nowrap">
               {t.actions.reset}
             </Button>
           </div>
@@ -267,11 +285,11 @@ function SubjectRow({
   }
 
   return (
-    <div className={`rounded-lg border border-[var(--border)] bg-[var(--surface)] p-3 ${archived ? "opacity-75" : ""}`}>
+    <div className={`rounded-lg border border-[var(--app-border)] bg-[var(--surface)] p-3 ${archived ? "opacity-75" : ""}`}>
       {editing ? (
         <div className="grid gap-3">
           <Input aria-label={t.settings.name} value={name} onChange={(event) => setName(event.target.value)} />
-          <ColorSelect value={color} onChange={setColor} />
+          <ColorSelect value={color} onChange={setColor} options={subjectColorOptions} />
           <div className="flex flex-wrap gap-2">
             <Button type="button" onClick={save}>
               {t.actions.save}
@@ -283,9 +301,9 @@ function SubjectRow({
           </div>
         </div>
       ) : (
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <SubjectPill subject={subject} />
-          <div className="flex flex-wrap gap-2">
+          <div className="flex shrink-0 flex-wrap gap-2 sm:justify-end">
             <Button type="button" variant="secondary" onClick={() => setEditing(true)}>
               <Pencil className="h-4 w-4" aria-hidden />
               {t.actions.edit}
@@ -324,7 +342,7 @@ function TagRow({
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(tag.name);
   const [description, setDescription] = useState(tag.description ?? "");
-  const [color, setColor] = useState(tag.color);
+  const [color, setColor] = useState(resolveTagColor(tag.color));
 
   function save() {
     if (!name.trim()) return;
@@ -333,12 +351,12 @@ function TagRow({
   }
 
   return (
-    <div className={`rounded-lg border border-[var(--border)] bg-[var(--surface)] p-3 ${archived ? "opacity-75" : ""}`}>
+    <div className={`rounded-lg border border-[var(--app-border)] bg-[var(--surface)] p-3 ${archived ? "opacity-75" : ""}`}>
       {editing ? (
         <div className="grid gap-3">
           <Input aria-label={t.settings.name} value={name} onChange={(event) => setName(event.target.value)} />
           <Input aria-label={t.settings.description} value={description} onChange={(event) => setDescription(event.target.value)} placeholder={t.settings.description} />
-          <ColorSelect value={color} onChange={setColor} />
+          <ColorSelect value={color} onChange={setColor} options={tagThemeColorOptions} resolveColor={resolveTagColor} />
           <div className="flex flex-wrap gap-2">
             <Button type="button" onClick={save}>
               {t.actions.save}
@@ -350,12 +368,12 @@ function TagRow({
           </div>
         </div>
       ) : (
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div>
+        <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0">
             <TagPill tag={tag} />
             {tag.description ? <p className="mt-2 text-sm text-[var(--muted)]">{tag.description}</p> : null}
           </div>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex shrink-0 flex-wrap gap-2 sm:justify-end">
             <Button type="button" variant="secondary" onClick={() => setEditing(true)}>
               <Pencil className="h-4 w-4" aria-hidden />
               {t.actions.edit}
@@ -377,18 +395,30 @@ function TagRow({
   );
 }
 
-function ColorSelect({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+function ColorSelect({
+  value,
+  onChange,
+  options,
+  resolveColor = (color: string) => color,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  options: readonly { value: string; label: string }[];
+  resolveColor?: (value: string) => string;
+}) {
+  const resolvedValue = resolveColor(value);
   return (
-    <div className="flex gap-1" role="radiogroup" aria-label="Color">
-      {colors.map((color) => (
+    <div className="flex min-w-0 max-w-full flex-wrap gap-1" role="radiogroup" aria-label="Color">
+      {options.map((option) => (
         <button
-          key={color}
+          key={option.value}
           type="button"
-          aria-label={color}
-          aria-pressed={value === color}
-          onClick={() => onChange(color)}
-          className="h-10 w-10 rounded-lg border border-[var(--border)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
-          style={{ backgroundColor: color }}
+          aria-label={option.label}
+          aria-pressed={resolvedValue === option.value}
+          title={option.label}
+          onClick={() => onChange(option.value)}
+          className="h-10 w-10 shrink-0 rounded-lg border border-[var(--app-border)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
+          style={{ backgroundColor: resolveColor(option.value) }}
         />
       ))}
     </div>

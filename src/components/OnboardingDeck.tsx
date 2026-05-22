@@ -27,7 +27,7 @@ export function OnboardingDeck() {
 
   return (
     <div className="relative grid min-h-[calc(100vh-3rem)] place-items-center overflow-hidden">
-      <div className="absolute right-0 top-0 z-20 flex rounded-full border border-[var(--border)] bg-[var(--card)]/80 p-1 shadow-sm shadow-slate-950/5 backdrop-blur">
+      <div className="absolute right-0 top-0 z-20 flex rounded-full border border-[var(--app-border)] bg-[var(--card)]/80 p-1 shadow-sm shadow-slate-950/5 backdrop-blur">
         {(["en", "de"] as Locale[]).map((locale) => (
           <button
             key={locale}
@@ -43,9 +43,9 @@ export function OnboardingDeck() {
         ))}
       </div>
       <section className="relative w-full max-w-2xl pt-14" aria-label="Onboarding">
-        <div className="pointer-events-none absolute inset-x-6 top-24 h-80 rounded-lg border border-[var(--border)] bg-[var(--card)] opacity-35 shadow-sm shadow-slate-950/5 sm:inset-x-10" />
-        <div className="pointer-events-none absolute inset-x-3 top-20 h-80 rounded-lg border border-[var(--border)] bg-[var(--card)] opacity-60 shadow-lg shadow-slate-950/10 sm:inset-x-5" />
-        <div className="relative rounded-lg border border-[var(--border)] bg-[var(--card)] p-5 shadow-2xl shadow-slate-950/10 sm:p-8">
+        <div className="pointer-events-none absolute inset-x-6 top-24 h-80 rounded-lg border border-[var(--app-border)] bg-[var(--card)] opacity-35 shadow-sm shadow-slate-950/5 sm:inset-x-10" />
+        <div className="pointer-events-none absolute inset-x-3 top-20 h-80 rounded-lg border border-[var(--app-border)] bg-[var(--card)] opacity-60 shadow-lg shadow-slate-950/10 sm:inset-x-5" />
+        <div className="relative rounded-lg border border-[var(--app-border)] bg-[var(--card)] p-5 shadow-2xl shadow-slate-950/10 sm:p-8">
           <div className="mb-6 flex items-center justify-between gap-3">
             <div className="text-sm font-semibold text-[var(--muted)]">
               {t.onboarding.step} {index + 1} / {cards.length}
@@ -73,11 +73,11 @@ export function OnboardingDeck() {
               >
                 <h1 className="text-3xl font-bold tracking-normal text-[var(--foreground)] sm:text-4xl">{cards[index][0]}</h1>
                 <p className="mt-4 max-w-xl text-base leading-7 text-[var(--muted)]">{cards[index][1]}</p>
-                <div className="mt-8 grid h-28 grid-cols-5 gap-2 rounded-lg border border-[var(--border)] bg-[var(--surface)] p-3">
+                <div className="mt-8 grid h-28 grid-cols-5 gap-2 rounded-lg border border-[var(--app-border)] bg-[var(--surface)] p-3">
                   {Array.from({ length: 10 }, (_, blockIndex) => (
                     <div
                       key={blockIndex}
-                      className="rounded-md border border-[var(--border)] bg-[var(--card)] shadow-sm shadow-slate-950/5"
+                      className="rounded-md border border-[var(--app-border)] bg-[var(--card)] shadow-sm shadow-slate-950/5"
                       style={{ opacity: blockIndex <= index ? 1 : 0.42 }}
                     />
                   ))}
@@ -88,7 +88,7 @@ export function OnboardingDeck() {
           <div className="mt-6 flex items-center justify-between gap-4">
             <div className="flex gap-1.5" aria-hidden>
               {cards.map((card, dotIndex) => (
-                <span key={card[0]} className={`h-2 rounded-full transition-all ${dotIndex === index ? "w-6 bg-[var(--accent)]" : "w-2 bg-[var(--border)]"}`} />
+                <span key={card[0]} className={`h-2 rounded-full transition-all ${dotIndex === index ? "w-6 bg-[var(--accent)]" : "w-2 bg-[var(--app-border)]"}`} />
               ))}
             </div>
             <div className="flex gap-2">

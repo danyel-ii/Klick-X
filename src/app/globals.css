@@ -1,56 +1,39 @@
 @import "tailwindcss";
+@plugin "daisyui" {
+  themes: all;
+}
 
 :root {
-  --background: #f8fafc;
-  --foreground: #1e293b;
-  --muted: #64748b;
-  --card: #ffffff;
-  --surface: #f1f5f9;
-  --surface-elevated: #e2e8f0;
-  --border: #e2e8f0;
-  --accent: #2563eb;
-  --accent-soft: #bfdbfe;
-  --success: #16a34a;
-  --warning: #d97706;
-  --destructive: #dc2626;
-  --ring: #60a5fa;
+  --background: var(--color-base-100);
+  --foreground: var(--color-base-content);
+  --muted: color-mix(in oklch, var(--color-base-content) 62%, transparent);
+  --card: var(--color-base-100);
+  --surface: var(--color-base-200);
+  --surface-elevated: var(--color-base-300);
+  --app-border: color-mix(in oklch, var(--color-base-content) 16%, transparent);
+  --accent: var(--color-primary);
+  --accent-soft: color-mix(in oklch, var(--color-primary) 24%, transparent);
+  --success: var(--color-success);
+  --warning: var(--color-warning);
+  --destructive: var(--color-error);
+  --ring: var(--color-primary);
   --shadow-color: 15 23 42;
 }
 
-html[data-theme="dark"] {
-  --background: #020617;
-  --foreground: #f1f5f9;
-  --muted: #94a3b8;
-  --card: #0f172a;
-  --surface: #111827;
-  --surface-elevated: #1e293b;
-  --border: #334155;
-  --accent: #7dd3fc;
-  --accent-soft: #0e7490;
-  --success: #4ade80;
-  --warning: #f59e0b;
-  --destructive: #fb7185;
-  --ring: #38bdf8;
-  --shadow-color: 0 0 0;
-}
-
-@media (prefers-color-scheme: dark) {
-  html[data-theme="system"] {
-    --background: #020617;
-    --foreground: #f1f5f9;
-    --muted: #94a3b8;
-    --card: #0f172a;
-    --surface: #111827;
-    --surface-elevated: #1e293b;
-    --border: #334155;
-    --accent: #7dd3fc;
-    --accent-soft: #0e7490;
-    --success: #4ade80;
-    --warning: #f59e0b;
-    --destructive: #fb7185;
-    --ring: #38bdf8;
-    --shadow-color: 0 0 0;
-  }
+[data-theme] {
+  --background: var(--color-base-100);
+  --foreground: var(--color-base-content);
+  --muted: color-mix(in oklch, var(--color-base-content) 62%, transparent);
+  --card: var(--color-base-100);
+  --surface: var(--color-base-200);
+  --surface-elevated: var(--color-base-300);
+  --app-border: color-mix(in oklch, var(--color-base-content) 16%, transparent);
+  --accent: var(--color-primary);
+  --accent-soft: color-mix(in oklch, var(--color-primary) 24%, transparent);
+  --success: var(--color-success);
+  --warning: var(--color-warning);
+  --destructive: var(--color-error);
+  --ring: var(--color-primary);
 }
 
 @theme inline {

@@ -1,5 +1,7 @@
+import type { AppTheme } from "./themes";
+
 export type Locale = "en" | "de";
-export type Theme = "system" | "light" | "dark";
+export type Theme = AppTheme;
 export type StartOfWeek = "monday" | "sunday";
 export type StudyBlockStatus =
   | "planned"

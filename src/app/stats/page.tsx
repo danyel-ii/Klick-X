@@ -34,13 +34,13 @@ export default function StatsPage() {
       <SurfaceCard className="mb-5">
         <h2 className="text-lg font-bold">{t.stats.filters}</h2>
         <div className="mt-4 grid gap-3 sm:grid-cols-4">
-          <select value={range} onChange={(event) => setRange(event.target.value as StatsRange)} className="min-h-10 rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3">
+          <select value={range} onChange={(event) => setRange(event.target.value as StatsRange)} className="min-h-10 rounded-lg border border-[var(--app-border)] bg-[var(--surface)] px-3">
             <option value="7d">{t.stats.range7}</option>
             <option value="30d">{t.stats.range30}</option>
             <option value="90d">{t.stats.range90}</option>
             <option value="all">{t.stats.allTime}</option>
           </select>
-          <select value={subjectId} onChange={(event) => setSubjectId(event.target.value)} className="min-h-10 rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3">
+          <select value={subjectId} onChange={(event) => setSubjectId(event.target.value)} className="min-h-10 rounded-lg border border-[var(--app-border)] bg-[var(--surface)] px-3">
             <option value="">{t.stats.allSubjects}</option>
             {subjects.map((subject) => (
               <option key={subject.id} value={subject.id}>
@@ -48,7 +48,7 @@ export default function StatsPage() {
               </option>
             ))}
           </select>
-          <select value={tagId} onChange={(event) => setTagId(event.target.value)} className="min-h-10 rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3">
+          <select value={tagId} onChange={(event) => setTagId(event.target.value)} className="min-h-10 rounded-lg border border-[var(--app-border)] bg-[var(--surface)] px-3">
             <option value="">{t.stats.allTags}</option>
             {tags.map((tag) => (
               <option key={tag.id} value={tag.id}>
@@ -86,7 +86,7 @@ export default function StatsPage() {
                   <span
                     key={day.date}
                     title={`${format(new Date(`${day.date}T00:00:00`), "MMM d")}: ${formatMinutes(day.seconds)}`}
-                    className="aspect-square rounded-sm border border-[var(--border)]"
+                    className="aspect-square rounded-sm border border-[var(--app-border)]"
                     style={{ backgroundColor: intensity ? `color-mix(in srgb, var(--accent) ${20 + intensity * 65}%, var(--surface))` : "var(--surface)" }}
                   />
                 );
@@ -98,7 +98,7 @@ export default function StatsPage() {
             <div className="mt-4 grid gap-3">
               {stats.notes.length ? (
                 stats.notes.map((note) => (
-                  <article key={note.block.id} className="rounded-lg border border-[var(--border)] bg-[var(--surface)] p-3">
+                  <article key={note.block.id} className="rounded-lg border border-[var(--app-border)] bg-[var(--surface)] p-3">
                     <div className="flex flex-wrap items-center gap-2 text-sm text-[var(--muted)]">
                       <span>{note.block.date}</span>
                       <span>{note.subject?.name}</span>
@@ -138,10 +138,10 @@ function DonutChartCard({ title, data, empty }: { title: string; data: { name: s
     <SurfaceCard>
       <h2 className="text-lg font-bold">{title}</h2>
       {data.length ? (
-        <div className="mt-4 h-64" aria-label={title}>
-          <ResponsiveContainer width="100%" height="100%">
+        <div className="mt-4 w-full min-w-0" aria-label={title}>
+          <ResponsiveContainer width="100%" height={256} minWidth={0}>
             <PieChart>
-              <Tooltip contentStyle={{ background: "var(--card)", border: "1px solid var(--border)", color: "var(--foreground)" }} />
+              <Tooltip contentStyle={{ background: "var(--card)", border: "1px solid var(--app-border)", color: "var(--foreground)" }} />
               <Pie data={data} dataKey="minutes" nameKey="name" innerRadius={62} outerRadius={92} paddingAngle={3}>
                 {data.map((entry) => (
                   <Cell key={entry.name} fill={entry.color} />
@@ -162,8 +162,8 @@ function AreaChartCard({ title, data, empty }: { title: string; data: { name: st
     <SurfaceCard>
       <h2 className="text-lg font-bold">{title}</h2>
       {data.length ? (
-        <div className="mt-4 h-64" aria-label={title}>
-          <ResponsiveContainer width="100%" height="100%">
+        <div className="mt-4 w-full min-w-0" aria-label={title}>
+          <ResponsiveContainer width="100%" height={256} minWidth={0}>
             <AreaChart data={data}>
               <defs>
                 <linearGradient id={`area-${title.replace(/\s+/g, "-")}`} x1="0" x2="0" y1="0" y2="1">
@@ -171,10 +171,10 @@ function AreaChartCard({ title, data, empty }: { title: string; data: { name: st
                   <stop offset="95%" stopColor="var(--accent)" stopOpacity={0.02} />
                 </linearGradient>
               </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--app-border)" />
               <XAxis dataKey="name" tick={{ fill: "var(--muted)", fontSize: 12 }} />
               <YAxis tick={{ fill: "var(--muted)", fontSize: 12 }} allowDecimals={false} />
-              <Tooltip contentStyle={{ background: "var(--card)", border: "1px solid var(--border)", color: "var(--foreground)" }} />
+              <Tooltip contentStyle={{ background: "var(--card)", border: "1px solid var(--app-border)", color: "var(--foreground)" }} />
               <Area type="monotone" dataKey="value" stroke="var(--accent)" strokeWidth={2} fill={`url(#area-${title.replace(/\s+/g, "-")})`} />
             </AreaChart>
           </ResponsiveContainer>

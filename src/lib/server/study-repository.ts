@@ -1,5 +1,6 @@
 import { neon, type NeonQueryFunction } from "@neondatabase/serverless";
 import { buildStatsSummary } from "@/lib/analytics";
+import { defaultTagColorValues, subjectColorValues } from "@/lib/colors";
 import { localDateKey } from "@/lib/date";
 import { detectLocale } from "@/lib/i18n";
 import { accumulateElapsed } from "@/lib/timer";
@@ -20,8 +21,6 @@ import type {
 
 export const ONBOARDING_VERSION = 1;
 
-const subjectColors = ["#2563eb", "#7c3aed", "#0891b2", "#16a34a", "#dc2626", "#d97706", "#0f766e", "#4f46e5"];
-const tagColors = ["#be123c", "#9333ea", "#0d9488", "#2563eb", "#ca8a04"];
 const seedSubjects = {
   en: ["Mathematics", "Physics", "Chemistry", "Biology", "Literature", "History", "Languages", "Computer Science"],
   de: ["Mathematik", "Physik", "Chemie", "Biologie", "Literatur", "Geschichte", "Sprachen", "Informatik"],
@@ -239,7 +238,7 @@ export async function seedDefaultSubjectsIfEmpty(locale: Locale) {
   for (const subject of seedSubjects[locale].map((name, index) => ({
     id: id("subject"),
     name,
-    color: subjectColors[index % subjectColors.length],
+    color: subjectColorValues[index % subjectColorValues.length],
     icon: "",
     archivedAt: null,
     createdAt: now,
@@ -300,7 +299,7 @@ export async function seedDefaultTagsIfEmpty(locale: Locale) {
   for (const tag of seedTags[locale].map((name, index) => ({
     id: id("tag"),
     name,
-    color: tagColors[index % tagColors.length],
+    color: defaultTagColorValues[index % defaultTagColorValues.length],
     description: "",
     archivedAt: null,
     createdAt: now,
