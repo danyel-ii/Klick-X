@@ -137,3 +137,14 @@ export type ExportPayload = {
   studyBlocks: StudyBlock[];
   settings: AppSettings | null;
 };
+
+export type AppSnapshot = {
+  settings: AppSettings;
+  subjects: Subject[];
+  tags: Tag[];
+  today: StudyDay | null;
+  todayBlocks: StudyBlock[];
+  calendarSummary: CalendarDaySummary[];
+  allDays: StudyDay[];
+  allBlocks: StudyBlock[];
+};

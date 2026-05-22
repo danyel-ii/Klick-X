@@ -155,6 +155,20 @@ export async function archiveSubject(idValue: string) {
   await db.subjects.update(idValue, { archivedAt: nowIso(), updatedAt: nowIso() });
 }
 
+export async function restoreSubject(idValue: string) {
+  await db.subjects.update(idValue, { archivedAt: null, updatedAt: nowIso() });
+}
+
+export async function deleteSubject(idValue: string, force = false) {
+  const usedCount = await db.studyBlocks.where("subjectId").equals(idValue).count();
+  if (usedCount > 0 && !force) {
+    await archiveSubject(idValue);
+    return "archived" as const;
+  }
+  await db.subjects.delete(idValue);
+  return "deleted" as const;
+}
+
 export async function listTags() {
   return db.tags.orderBy("createdAt").toArray();
 }
@@ -172,6 +186,20 @@ export async function updateTag(idValue: string, input: Partial<Pick<Tag, "name"
 
 export async function archiveTag(idValue: string) {
   await db.tags.update(idValue, { archivedAt: nowIso(), updatedAt: nowIso() });
+}
+
+export async function restoreTag(idValue: string) {
+  await db.tags.update(idValue, { archivedAt: null, updatedAt: nowIso() });
+}
+
+export async function deleteTag(idValue: string, force = false) {
+  const usedCount = await db.studyBlocks.where("tagIds").equals(idValue).count();
+  if (usedCount > 0 && !force) {
+    await archiveTag(idValue);
+    return "archived" as const;
+  }
+  await db.tags.delete(idValue);
+  return "deleted" as const;
 }
 
 export async function getTodayDay() {

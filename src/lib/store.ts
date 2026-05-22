@@ -1,10 +1,13 @@
 "use client";
 
 import { create } from "zustand";
+import { buildStatsSummary } from "./analytics";
 import * as data from "./db";
+import { localDateKey } from "./date";
 import { dictionaries, type Dictionary } from "./i18n";
 import type {
   AppSettings,
+  AppSnapshot,
   CalendarDaySummary,
   DayAssignment,
   ExportPayload,
@@ -38,9 +41,13 @@ type AppState = {
   createSubject: (input: { name: string; color: string; icon?: string }) => Promise<void>;
   updateSubject: (id: string, input: Partial<Pick<Subject, "name" | "color" | "icon">>) => Promise<void>;
   archiveSubject: (id: string) => Promise<void>;
+  restoreSubject: (id: string) => Promise<void>;
+  deleteSubject: (id: string, force?: boolean) => Promise<void>;
   createTag: (input: { name: string; color: string; description?: string }) => Promise<void>;
   updateTag: (id: string, input: Partial<Pick<Tag, "name" | "color" | "description">>) => Promise<void>;
   archiveTag: (id: string) => Promise<void>;
+  restoreTag: (id: string) => Promise<void>;
+  deleteTag: (id: string, force?: boolean) => Promise<void>;
   createOrUpdateDayPlan: (date: string, plannedBlockCount: number, assignments: DayAssignment[]) => Promise<void>;
   startBlock: (id: string) => Promise<void>;
   pauseBlock: (id: string) => Promise<void>;
@@ -68,7 +75,41 @@ async function loadSnapshot() {
     data.db.studyBlocks.toArray(),
   ]);
   const todayBlocks = today ? await data.listBlocksForDate(today.date) : [];
-  return { settings, subjects, tags, today, todayBlocks, calendarSummary, allDays, allBlocks };
+  return { settings, subjects, tags, today: today ?? null, todayBlocks, calendarSummary, allDays, allBlocks };
+}
+
+async function loadRemoteSnapshot() {
+  const response = await fetch("/api/study", { cache: "no-store" });
+  if (!response.ok) throw new Error("Remote database is unavailable.");
+  return (await response.json()) as AppSnapshot;
+}
+
+async function remoteMutation(action: string, payload?: unknown) {
+  const response = await fetch("/api/study", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action, payload }),
+  });
+  if (!response.ok) throw new Error("Remote database mutation failed.");
+  return (await response.json()) as AppSnapshot;
+}
+
+async function remoteStats(filters: StatsFilters) {
+  const response = await fetch("/api/study", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(filters),
+  });
+  if (!response.ok) throw new Error("Remote database stats failed.");
+  return (await response.json()) as StatsSummary;
+}
+
+function stateFromSnapshot(snapshot: AppSnapshot) {
+  return {
+    ...snapshot,
+    t: dictionaries[snapshot.settings.locale],
+    hydrated: true,
+  };
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
@@ -84,99 +125,245 @@ export const useAppStore = create<AppState>((set, get) => ({
   stats: null,
   t: dictionaries.en,
   initialize: async () => {
-    const snapshot = await loadSnapshot();
-    set({
-      ...snapshot,
-      t: dictionaries[snapshot.settings.locale],
-      hydrated: true,
-    });
+    try {
+      set(stateFromSnapshot(await loadRemoteSnapshot()));
+    } catch {
+      set(stateFromSnapshot(await loadSnapshot()));
+    }
   },
   refresh: async () => {
-    const snapshot = await loadSnapshot();
-    set({ ...snapshot, t: dictionaries[snapshot.settings.locale], hydrated: true });
+    try {
+      set(stateFromSnapshot(await loadRemoteSnapshot()));
+    } catch {
+      set(stateFromSnapshot(await loadSnapshot()));
+    }
   },
   setLocale: async (locale) => {
-    await data.setLocale(locale);
-    await get().refresh();
+    try {
+      set(stateFromSnapshot(await remoteMutation("setLocale", { locale })));
+    } catch {
+      await data.setLocale(locale);
+      await get().refresh();
+    }
   },
   updateSettings: async (patch) => {
-    await data.updateSettings(patch);
-    await get().refresh();
+    try {
+      set(stateFromSnapshot(await remoteMutation("updateSettings", { patch })));
+    } catch {
+      await data.updateSettings(patch);
+      await get().refresh();
+    }
   },
   completeOnboarding: async () => {
-    await data.completeOnboarding();
-    await get().refresh();
+    try {
+      set(stateFromSnapshot(await remoteMutation("completeOnboarding")));
+    } catch {
+      await data.completeOnboarding();
+      await get().refresh();
+    }
   },
   resetOnboarding: async () => {
-    await data.resetOnboarding();
-    await get().refresh();
+    try {
+      set(stateFromSnapshot(await remoteMutation("resetOnboarding")));
+    } catch {
+      await data.resetOnboarding();
+      await get().refresh();
+    }
   },
   createSubject: async (input) => {
-    await data.createSubject(input);
-    await get().refresh();
+    try {
+      set(stateFromSnapshot(await remoteMutation("createSubject", { input })));
+    } catch {
+      await data.createSubject(input);
+      await get().refresh();
+    }
   },
   updateSubject: async (id, input) => {
-    await data.updateSubject(id, input);
-    await get().refresh();
+    try {
+      set(stateFromSnapshot(await remoteMutation("updateSubject", { id, input })));
+    } catch {
+      await data.updateSubject(id, input);
+      await get().refresh();
+    }
   },
   archiveSubject: async (id) => {
-    await data.archiveSubject(id);
-    await get().refresh();
+    try {
+      set(stateFromSnapshot(await remoteMutation("archiveSubject", { id })));
+    } catch {
+      await data.archiveSubject(id);
+      await get().refresh();
+    }
+  },
+  restoreSubject: async (id) => {
+    try {
+      set(stateFromSnapshot(await remoteMutation("restoreSubject", { id })));
+    } catch {
+      await data.restoreSubject(id);
+      await get().refresh();
+    }
+  },
+  deleteSubject: async (id, force = false) => {
+    try {
+      set(stateFromSnapshot(await remoteMutation("deleteSubject", { id, force })));
+    } catch {
+      await data.deleteSubject(id, force);
+      await get().refresh();
+    }
   },
   createTag: async (input) => {
-    await data.createTag(input);
-    await get().refresh();
+    try {
+      set(stateFromSnapshot(await remoteMutation("createTag", { input })));
+    } catch {
+      await data.createTag(input);
+      await get().refresh();
+    }
   },
   updateTag: async (id, input) => {
-    await data.updateTag(id, input);
-    await get().refresh();
+    try {
+      set(stateFromSnapshot(await remoteMutation("updateTag", { id, input })));
+    } catch {
+      await data.updateTag(id, input);
+      await get().refresh();
+    }
   },
   archiveTag: async (id) => {
-    await data.archiveTag(id);
-    await get().refresh();
+    try {
+      set(stateFromSnapshot(await remoteMutation("archiveTag", { id })));
+    } catch {
+      await data.archiveTag(id);
+      await get().refresh();
+    }
+  },
+  restoreTag: async (id) => {
+    try {
+      set(stateFromSnapshot(await remoteMutation("restoreTag", { id })));
+    } catch {
+      await data.restoreTag(id);
+      await get().refresh();
+    }
+  },
+  deleteTag: async (id, force = false) => {
+    try {
+      set(stateFromSnapshot(await remoteMutation("deleteTag", { id, force })));
+    } catch {
+      await data.deleteTag(id, force);
+      await get().refresh();
+    }
   },
   createOrUpdateDayPlan: async (date, plannedBlockCount, assignments) => {
-    await data.createOrUpdateDayPlan(date, plannedBlockCount, assignments);
-    await get().refresh();
+    try {
+      set(stateFromSnapshot(await remoteMutation("createOrUpdateDayPlan", { date, plannedBlockCount, assignments })));
+    } catch {
+      await data.createOrUpdateDayPlan(date, plannedBlockCount, assignments);
+      await get().refresh();
+    }
   },
   startBlock: async (id) => {
-    await data.startBlock(id);
-    await get().refresh();
+    try {
+      set(stateFromSnapshot(await remoteMutation("startBlock", { id })));
+    } catch {
+      await data.startBlock(id);
+      await get().refresh();
+    }
   },
   pauseBlock: async (id) => {
-    await data.pauseBlock(id);
-    await get().refresh();
+    try {
+      set(stateFromSnapshot(await remoteMutation("pauseBlock", { id })));
+    } catch {
+      await data.pauseBlock(id);
+      await get().refresh();
+    }
   },
   completeBlock: async (id) => {
-    await data.completeBlock(id);
-    await get().refresh();
+    try {
+      set(stateFromSnapshot(await remoteMutation("completeBlock", { id })));
+    } catch {
+      await data.completeBlock(id);
+      await get().refresh();
+    }
   },
   skipBlock: async (id) => {
-    await data.skipBlock(id);
-    await get().refresh();
+    try {
+      set(stateFromSnapshot(await remoteMutation("skipBlock", { id })));
+    } catch {
+      await data.skipBlock(id);
+      await get().refresh();
+    }
   },
   updateBlockSubject: async (id, subjectId) => {
-    await data.updateBlockSubject(id, subjectId);
-    await get().refresh();
+    try {
+      set(stateFromSnapshot(await remoteMutation("updateBlockSubject", { id, subjectId })));
+    } catch {
+      await data.updateBlockSubject(id, subjectId);
+      await get().refresh();
+    }
   },
   updateBlockTags: async (id, tagIds) => {
-    await data.updateBlockTags(id, tagIds);
-    await get().refresh();
+    try {
+      set(stateFromSnapshot(await remoteMutation("updateBlockTags", { id, tagIds })));
+    } catch {
+      await data.updateBlockTags(id, tagIds);
+      await get().refresh();
+    }
   },
   updateBlockNote: async (id, note) => {
-    await data.updateBlockNote(id, note);
-    await get().refresh();
+    try {
+      set(stateFromSnapshot(await remoteMutation("updateBlockNote", { id, note })));
+    } catch {
+      await data.updateBlockNote(id, note);
+      await get().refresh();
+    }
   },
   loadStats: async (filters) => {
-    set({ stats: await data.getStats(filters) });
+    try {
+      set({ stats: await remoteStats(filters) });
+    } catch {
+      const state = get();
+      if (state.hydrated) {
+        set({
+          stats: buildStatsSummary({
+            days: state.allDays,
+            blocks: state.allBlocks,
+            subjects: state.subjects,
+            tags: state.tags,
+            filters,
+            todayKey: localDateKey(),
+          }),
+        });
+        return;
+      }
+      set({ stats: await data.getStats(filters) });
+    }
   },
-  exportLocalData: data.exportLocalData,
+  exportLocalData: async () => {
+    const state = get();
+    if (state.hydrated && state.settings) {
+      return {
+        version: 1,
+        exportedAt: new Date().toISOString(),
+        subjects: state.subjects,
+        tags: state.tags,
+        studyDays: state.allDays,
+        studyBlocks: state.allBlocks,
+        settings: state.settings,
+      };
+    }
+    return data.exportLocalData();
+  },
   importLocalData: async (payload) => {
-    await data.importLocalData(payload);
-    await get().refresh();
+    try {
+      set(stateFromSnapshot(await remoteMutation("importLocalData", { payload })));
+    } catch {
+      await data.importLocalData(payload);
+      await get().refresh();
+    }
   },
   resetLocalData: async () => {
-    await data.resetLocalData();
-    await get().initialize();
+    try {
+      set(stateFromSnapshot(await remoteMutation("resetLocalData")));
+    } catch {
+      await data.resetLocalData();
+      await get().initialize();
+    }
   },
 }));

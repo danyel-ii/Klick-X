@@ -1,10 +1,10 @@
 "use client";
 
 import { ChangeEvent, useRef, useState } from "react";
-import { Download, RotateCcw, Upload } from "lucide-react";
+import { ArchiveRestore, Download, Pencil, RotateCcw, Trash2, Upload, X } from "lucide-react";
 import { Button, Input, PageHeader, SurfaceCard, TagPill, SubjectPill } from "@/components/ui";
 import { useAppStore } from "@/lib/store";
-import type { ExportPayload, Locale, StartOfWeek, Theme } from "@/lib/types";
+import type { ExportPayload, Locale, StartOfWeek, Subject, Tag, Theme } from "@/lib/types";
 
 const colors = ["#2563eb", "#7c3aed", "#0891b2", "#16a34a", "#dc2626", "#d97706", "#0f766e", "#be123c"];
 
@@ -17,9 +17,13 @@ export default function SettingsPage() {
     setLocale,
     updateSettings,
     createSubject,
-    archiveSubject,
+    updateSubject,
+    deleteSubject,
+    restoreSubject,
     createTag,
-    archiveTag,
+    updateTag,
+    deleteTag,
+    restoreTag,
     resetOnboarding,
     exportLocalData,
     importLocalData,
@@ -28,11 +32,14 @@ export default function SettingsPage() {
   const [subjectName, setSubjectName] = useState("");
   const [subjectColor, setSubjectColor] = useState(colors[0]);
   const [tagName, setTagName] = useState("");
+  const [tagDescription, setTagDescription] = useState("");
   const [tagColor, setTagColor] = useState(colors[2]);
   const [resetText, setResetText] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
   const activeSubjects = subjects.filter((subject) => !subject.archivedAt);
   const activeTags = tags.filter((tag) => !tag.archivedAt);
+  const archivedSubjects = subjects.filter((subject) => subject.archivedAt);
+  const archivedTags = tags.filter((tag) => tag.archivedAt);
 
   async function handleExport() {
     const payload = await exportLocalData();
@@ -60,7 +67,7 @@ export default function SettingsPage() {
         <SurfaceCard>
           <h2 className="text-lg font-bold">{t.settings.subjects}</h2>
           <form
-            className="mt-4 flex flex-col gap-2 sm:flex-row"
+            className="mt-4 grid gap-2"
             onSubmit={(event) => {
               event.preventDefault();
               if (!subjectName.trim()) return;
@@ -68,54 +75,106 @@ export default function SettingsPage() {
               setSubjectName("");
             }}
           >
-            <Input aria-label={t.settings.name} value={subjectName} onChange={(event) => setSubjectName(event.target.value)} placeholder={t.settings.name} className="flex-1" />
-            <ColorSelect value={subjectColor} onChange={setSubjectColor} />
-            <Button type="submit">{t.settings.addSubject}</Button>
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <Input aria-label={t.settings.name} value={subjectName} onChange={(event) => setSubjectName(event.target.value)} placeholder={t.settings.name} className="flex-1" />
+              <ColorSelect value={subjectColor} onChange={setSubjectColor} />
+              <Button type="submit">{t.settings.addSubject}</Button>
+            </div>
           </form>
           <div className="mt-4 grid gap-2">
             {activeSubjects.length ? (
               activeSubjects.map((subject) => (
-                <div key={subject.id} className="flex items-center justify-between gap-2 rounded-lg border border-[var(--border)] bg-[var(--surface)] p-2">
-                  <SubjectPill subject={subject} />
-                  <Button variant="ghost" onClick={() => void archiveSubject(subject.id)}>
-                    {t.settings.archive}
-                  </Button>
-                </div>
+                <SubjectRow
+                  key={subject.id}
+                  subject={subject}
+                  onSave={(patch) => void updateSubject(subject.id, patch)}
+                  onDelete={() => {
+                    if (window.confirm(t.settings.deleteSubjectConfirm)) void deleteSubject(subject.id);
+                  }}
+                />
               ))
             ) : (
               <p className="text-sm text-[var(--muted)]">{t.settings.emptySubjects}</p>
             )}
           </div>
+          <details className="mt-5">
+            <summary className="cursor-pointer text-sm font-semibold text-[var(--muted)]">{t.settings.archivedSubjects}</summary>
+            <div className="mt-3 grid gap-2">
+              {archivedSubjects.length ? (
+                archivedSubjects.map((subject) => (
+                  <SubjectRow
+                    key={subject.id}
+                    subject={subject}
+                    archived
+                    onSave={(patch) => void updateSubject(subject.id, patch)}
+                    onRestore={() => void restoreSubject(subject.id)}
+                    onDelete={() => {
+                      if (window.confirm(t.settings.permanentDeleteSubjectConfirm)) void deleteSubject(subject.id, true);
+                    }}
+                  />
+                ))
+              ) : (
+                <p className="text-sm text-[var(--muted)]">{t.settings.emptyArchivedSubjects}</p>
+              )}
+            </div>
+          </details>
         </SurfaceCard>
         <SurfaceCard>
           <h2 className="text-lg font-bold">{t.settings.tags}</h2>
           <form
-            className="mt-4 flex flex-col gap-2 sm:flex-row"
+            className="mt-4 grid gap-2"
             onSubmit={(event) => {
               event.preventDefault();
               if (!tagName.trim()) return;
-              void createTag({ name: tagName.trim(), color: tagColor });
+              void createTag({ name: tagName.trim(), color: tagColor, description: tagDescription.trim() });
               setTagName("");
+              setTagDescription("");
             }}
           >
-            <Input aria-label={t.settings.name} value={tagName} onChange={(event) => setTagName(event.target.value)} placeholder={t.settings.name} className="flex-1" />
-            <ColorSelect value={tagColor} onChange={setTagColor} />
-            <Button type="submit">{t.settings.addTag}</Button>
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <Input aria-label={t.settings.name} value={tagName} onChange={(event) => setTagName(event.target.value)} placeholder={t.settings.name} className="flex-1" />
+              <ColorSelect value={tagColor} onChange={setTagColor} />
+              <Button type="submit">{t.settings.addTag}</Button>
+            </div>
+            <Input aria-label={t.settings.description} value={tagDescription} onChange={(event) => setTagDescription(event.target.value)} placeholder={t.settings.description} />
           </form>
           <div className="mt-4 grid gap-2">
             {activeTags.length ? (
               activeTags.map((tag) => (
-                <div key={tag.id} className="flex items-center justify-between gap-2 rounded-lg border border-[var(--border)] bg-[var(--surface)] p-2">
-                  <TagPill tag={tag} />
-                  <Button variant="ghost" onClick={() => void archiveTag(tag.id)}>
-                    {t.settings.archive}
-                  </Button>
-                </div>
+                <TagRow
+                  key={tag.id}
+                  tag={tag}
+                  onSave={(patch) => void updateTag(tag.id, patch)}
+                  onDelete={() => {
+                    if (window.confirm(t.settings.deleteTagConfirm)) void deleteTag(tag.id);
+                  }}
+                />
               ))
             ) : (
               <p className="text-sm text-[var(--muted)]">{t.settings.emptyTags}</p>
             )}
           </div>
+          <details className="mt-5">
+            <summary className="cursor-pointer text-sm font-semibold text-[var(--muted)]">{t.settings.archivedTags}</summary>
+            <div className="mt-3 grid gap-2">
+              {archivedTags.length ? (
+                archivedTags.map((tag) => (
+                  <TagRow
+                    key={tag.id}
+                    tag={tag}
+                    archived
+                    onSave={(patch) => void updateTag(tag.id, patch)}
+                    onRestore={() => void restoreTag(tag.id)}
+                    onDelete={() => {
+                      if (window.confirm(t.settings.permanentDeleteTagConfirm)) void deleteTag(tag.id, true);
+                    }}
+                  />
+                ))
+              ) : (
+                <p className="text-sm text-[var(--muted)]">{t.settings.emptyArchivedTags}</p>
+              )}
+            </div>
+          </details>
         </SurfaceCard>
         <SurfaceCard>
           <h2 className="text-lg font-bold">{t.settings.language}</h2>
@@ -180,6 +239,141 @@ export default function SettingsPage() {
         </SurfaceCard>
       </div>
     </>
+  );
+}
+
+function SubjectRow({
+  subject,
+  archived,
+  onSave,
+  onDelete,
+  onRestore,
+}: {
+  subject: Subject;
+  archived?: boolean;
+  onSave: (patch: Pick<Subject, "name" | "color">) => void;
+  onDelete: () => void;
+  onRestore?: () => void;
+}) {
+  const { t } = useAppStore();
+  const [editing, setEditing] = useState(false);
+  const [name, setName] = useState(subject.name);
+  const [color, setColor] = useState(subject.color);
+
+  function save() {
+    if (!name.trim()) return;
+    onSave({ name: name.trim(), color });
+    setEditing(false);
+  }
+
+  return (
+    <div className={`rounded-lg border border-[var(--border)] bg-[var(--surface)] p-3 ${archived ? "opacity-75" : ""}`}>
+      {editing ? (
+        <div className="grid gap-3">
+          <Input aria-label={t.settings.name} value={name} onChange={(event) => setName(event.target.value)} />
+          <ColorSelect value={color} onChange={setColor} />
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" onClick={save}>
+              {t.actions.save}
+            </Button>
+            <Button type="button" variant="secondary" onClick={() => setEditing(false)}>
+              <X className="h-4 w-4" aria-hidden />
+              {t.actions.cancel}
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <SubjectPill subject={subject} />
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" variant="secondary" onClick={() => setEditing(true)}>
+              <Pencil className="h-4 w-4" aria-hidden />
+              {t.actions.edit}
+            </Button>
+            {archived && onRestore ? (
+              <Button type="button" variant="secondary" onClick={onRestore}>
+                <ArchiveRestore className="h-4 w-4" aria-hidden />
+                {t.settings.restore}
+              </Button>
+            ) : null}
+            <Button type="button" variant="danger" onClick={onDelete}>
+              <Trash2 className="h-4 w-4" aria-hidden />
+              {archived ? t.settings.permanentDelete : t.settings.deleteSubject}
+            </Button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TagRow({
+  tag,
+  archived,
+  onSave,
+  onDelete,
+  onRestore,
+}: {
+  tag: Tag;
+  archived?: boolean;
+  onSave: (patch: Pick<Tag, "name" | "color" | "description">) => void;
+  onDelete: () => void;
+  onRestore?: () => void;
+}) {
+  const { t } = useAppStore();
+  const [editing, setEditing] = useState(false);
+  const [name, setName] = useState(tag.name);
+  const [description, setDescription] = useState(tag.description ?? "");
+  const [color, setColor] = useState(tag.color);
+
+  function save() {
+    if (!name.trim()) return;
+    onSave({ name: name.trim(), color, description: description.trim() });
+    setEditing(false);
+  }
+
+  return (
+    <div className={`rounded-lg border border-[var(--border)] bg-[var(--surface)] p-3 ${archived ? "opacity-75" : ""}`}>
+      {editing ? (
+        <div className="grid gap-3">
+          <Input aria-label={t.settings.name} value={name} onChange={(event) => setName(event.target.value)} />
+          <Input aria-label={t.settings.description} value={description} onChange={(event) => setDescription(event.target.value)} placeholder={t.settings.description} />
+          <ColorSelect value={color} onChange={setColor} />
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" onClick={save}>
+              {t.actions.save}
+            </Button>
+            <Button type="button" variant="secondary" onClick={() => setEditing(false)}>
+              <X className="h-4 w-4" aria-hidden />
+              {t.actions.cancel}
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <TagPill tag={tag} />
+            {tag.description ? <p className="mt-2 text-sm text-[var(--muted)]">{tag.description}</p> : null}
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" variant="secondary" onClick={() => setEditing(true)}>
+              <Pencil className="h-4 w-4" aria-hidden />
+              {t.actions.edit}
+            </Button>
+            {archived && onRestore ? (
+              <Button type="button" variant="secondary" onClick={onRestore}>
+                <ArchiveRestore className="h-4 w-4" aria-hidden />
+                {t.settings.restore}
+              </Button>
+            ) : null}
+            <Button type="button" variant="danger" onClick={onDelete}>
+              <Trash2 className="h-4 w-4" aria-hidden />
+              {archived ? t.settings.permanentDelete : t.settings.deleteTag}
+            </Button>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
