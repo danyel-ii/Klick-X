@@ -1,52 +1,55 @@
 @import "tailwindcss";
 
 :root {
-  --background: #f7f5f1;
-  --foreground: #181713;
-  --muted: #69635a;
-  --card: #fffdf8;
-  --surface: #f0ede6;
-  --surface-elevated: #e8e2d7;
-  --border: #ddd5c9;
+  --background: #f8fafc;
+  --foreground: #1e293b;
+  --muted: #64748b;
+  --card: #ffffff;
+  --surface: #f1f5f9;
+  --surface-elevated: #e2e8f0;
+  --border: #e2e8f0;
   --accent: #2563eb;
   --accent-soft: #bfdbfe;
-  --success: #16803c;
-  --warning: #b45309;
-  --destructive: #c2410c;
+  --success: #16a34a;
+  --warning: #d97706;
+  --destructive: #dc2626;
   --ring: #60a5fa;
+  --shadow-color: 15 23 42;
 }
 
 html[data-theme="dark"] {
-  --background: #101113;
-  --foreground: #f4f1eb;
-  --muted: #aaa49a;
-  --card: #18191c;
-  --surface: #222327;
-  --surface-elevated: #2d2f35;
-  --border: #383a40;
+  --background: #020617;
+  --foreground: #f1f5f9;
+  --muted: #94a3b8;
+  --card: #0f172a;
+  --surface: #111827;
+  --surface-elevated: #1e293b;
+  --border: #334155;
   --accent: #7dd3fc;
   --accent-soft: #0e7490;
   --success: #4ade80;
   --warning: #f59e0b;
   --destructive: #fb7185;
   --ring: #38bdf8;
+  --shadow-color: 0 0 0;
 }
 
 @media (prefers-color-scheme: dark) {
   html[data-theme="system"] {
-    --background: #101113;
-    --foreground: #f4f1eb;
-    --muted: #aaa49a;
-    --card: #18191c;
-    --surface: #222327;
-    --surface-elevated: #2d2f35;
-    --border: #383a40;
+    --background: #020617;
+    --foreground: #f1f5f9;
+    --muted: #94a3b8;
+    --card: #0f172a;
+    --surface: #111827;
+    --surface-elevated: #1e293b;
+    --border: #334155;
     --accent: #7dd3fc;
     --accent-soft: #0e7490;
     --success: #4ade80;
     --warning: #f59e0b;
     --destructive: #fb7185;
     --ring: #38bdf8;
+    --shadow-color: 0 0 0;
   }
 }
 
@@ -68,9 +71,7 @@ html {
 
 body {
   min-height: 100%;
-  background:
-    radial-gradient(circle at top left, color-mix(in srgb, var(--accent) 14%, transparent), transparent 32rem),
-    var(--background);
+  background: var(--background);
   color: var(--foreground);
   font-family: "Geist", "Geist Fallback", ui-sans-serif, system-ui, sans-serif;
 }

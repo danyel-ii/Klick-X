@@ -1,14 +1,16 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { format, subDays } from "date-fns";
+import { Area, AreaChart, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { Input, PageHeader, SurfaceCard, TagPill } from "@/components/ui";
+import { localDateKey } from "@/lib/date";
 import { useAppStore } from "@/lib/store";
 import { formatMinutes } from "@/lib/timer";
 import type { StatsRange } from "@/lib/types";
 
 export default function StatsPage() {
-  const { t, stats, loadStats, subjects, tags, settings } = useAppStore();
+  const { t, stats, loadStats, subjects, tags, settings, allBlocks } = useAppStore();
   const [range, setRange] = useState<StatsRange>("30d");
   const [subjectId, setSubjectId] = useState("");
   const [tagId, setTagId] = useState("");
@@ -18,8 +20,13 @@ export default function StatsPage() {
     void loadStats({ range, subjectId: subjectId || undefined, tagId: tagId || undefined, noteQuery: noteQuery || undefined });
   }, [loadStats, noteQuery, range, subjectId, tagId]);
 
-  const subjectData = stats?.timeBySubject.map((item) => ({ name: item.name, minutes: Math.round(item.seconds / 60) })) ?? [];
-  const tagData = stats?.timeByTag.map((item) => ({ name: item.name, minutes: Math.round(item.seconds / 60) })) ?? [];
+  const subjectData = stats?.timeBySubject.map((item) => ({ name: item.name, minutes: Math.round(item.seconds / 60), color: item.color })) ?? [];
+  const tagData = stats?.timeByTag.map((item) => ({ name: item.name, minutes: Math.round(item.seconds / 60), color: item.color })) ?? [];
+  const consistencyDays = Array.from({ length: 49 }, (_, index) => {
+    const date = localDateKey(subDays(new Date(), 48 - index));
+    const seconds = allBlocks.filter((block) => block.date === date).reduce((sum, block) => sum + block.elapsedSeconds, 0);
+    return { date, seconds };
+  });
 
   return (
     <>
@@ -56,20 +63,36 @@ export default function StatsPage() {
         <>
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <StatCard label={t.stats.totalTime} value={formatMinutes(stats.totalSeconds)} />
-            <StatCard label={t.stats.completedBlocks} value={String(stats.completedBlocks)} helper={`${stats.plannedBlocks} planned`} />
+            <StatCard label={t.stats.completedBlocks} value={String(stats.completedBlocks)} helper={`${stats.plannedBlocks} ${t.stats.plannedShort}`} />
             <StatCard label={t.stats.completionRate} value={`${Math.round(stats.completionRate * 100)}%`} />
             <StatCard label={t.stats.currentStreak} value={String(stats.currentStreak)} helper={`${t.stats.longestStreak}: ${stats.longestStreak}`} />
             <StatCard label={t.stats.avgTime} value={formatMinutes(stats.averageSecondsPerActiveDay)} />
             <StatCard label={t.stats.avgBlocks} value={stats.averageBlocksPerActiveDay.toFixed(1)} />
-            <StatCard label="Top subject" value={stats.mostStudiedSubject?.name ?? "-"} />
-            <StatCard label="Top tag" value={stats.mostUsedTag?.name ?? "-"} />
+            <StatCard label={t.stats.topSubject} value={stats.mostStudiedSubject?.name ?? "-"} />
+            <StatCard label={t.stats.topTag} value={stats.mostUsedTag?.name ?? "-"} />
           </div>
           <div className="mt-5 grid gap-5 lg:grid-cols-2">
-            <ChartCard title={t.stats.bySubject} data={subjectData} empty={t.stats.noData} />
-            <ChartCard title={t.stats.byTag} data={tagData} empty={t.stats.noData} />
-            <ChartCard title={t.stats.weekly} data={stats.weeklyTrend.map((item) => ({ name: item.label, minutes: Math.round(item.seconds / 60) }))} empty={t.stats.noData} />
-            <ChartCard title={t.stats.monthly} data={stats.monthlyTrend.map((item) => ({ name: item.label, minutes: Math.round(item.seconds / 60) }))} empty={t.stats.noData} />
+            <DonutChartCard title={t.stats.bySubject} data={subjectData} empty={t.stats.noData} />
+            <DonutChartCard title={t.stats.byTag} data={tagData} empty={t.stats.noData} />
+            <AreaChartCard title={t.stats.weekly} data={stats.weeklyTrend.map((item) => ({ name: item.label, value: item.completedBlocks }))} empty={t.stats.noData} />
+            <AreaChartCard title={t.stats.monthly} data={stats.monthlyTrend.map((item) => ({ name: item.label, value: item.completedBlocks }))} empty={t.stats.noData} />
           </div>
+          <SurfaceCard className="mt-5">
+            <h2 className="text-lg font-bold">{t.stats.consistency}</h2>
+            <div className="mt-4 grid grid-cols-7 gap-1.5 sm:grid-cols-[repeat(49,minmax(0,1fr))]" aria-label={t.stats.consistency}>
+              {consistencyDays.map((day) => {
+                const intensity = Math.min(1, day.seconds / 7200);
+                return (
+                  <span
+                    key={day.date}
+                    title={`${format(new Date(`${day.date}T00:00:00`), "MMM d")}: ${formatMinutes(day.seconds)}`}
+                    className="aspect-square rounded-sm border border-[var(--border)]"
+                    style={{ backgroundColor: intensity ? `color-mix(in srgb, var(--accent) ${20 + intensity * 65}%, var(--surface))` : "var(--surface)" }}
+                  />
+                );
+              })}
+            </div>
+          </SurfaceCard>
           <SurfaceCard className="mt-5">
             <h2 className="text-lg font-bold">{t.stats.notes}</h2>
             <div className="mt-4 grid gap-3">
@@ -110,20 +133,50 @@ function StatCard({ label, value, helper }: { label: string; value: string; help
   );
 }
 
-function ChartCard({ title, data, empty }: { title: string; data: { name: string; minutes: number }[]; empty: string }) {
+function DonutChartCard({ title, data, empty }: { title: string; data: { name: string; minutes: number; color: string }[]; empty: string }) {
   return (
     <SurfaceCard>
       <h2 className="text-lg font-bold">{title}</h2>
       {data.length ? (
         <div className="mt-4 h-64" aria-label={title}>
           <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={data}>
+            <PieChart>
+              <Tooltip contentStyle={{ background: "var(--card)", border: "1px solid var(--border)", color: "var(--foreground)" }} />
+              <Pie data={data} dataKey="minutes" nameKey="name" innerRadius={62} outerRadius={92} paddingAngle={3}>
+                {data.map((entry) => (
+                  <Cell key={entry.name} fill={entry.color} />
+                ))}
+              </Pie>
+            </PieChart>
+          </ResponsiveContainer>
+        </div>
+      ) : (
+        <p className="mt-4 text-sm text-[var(--muted)]">{empty}</p>
+      )}
+    </SurfaceCard>
+  );
+}
+
+function AreaChartCard({ title, data, empty }: { title: string; data: { name: string; value: number }[]; empty: string }) {
+  return (
+    <SurfaceCard>
+      <h2 className="text-lg font-bold">{title}</h2>
+      {data.length ? (
+        <div className="mt-4 h-64" aria-label={title}>
+          <ResponsiveContainer width="100%" height="100%">
+            <AreaChart data={data}>
+              <defs>
+                <linearGradient id={`area-${title.replace(/\s+/g, "-")}`} x1="0" x2="0" y1="0" y2="1">
+                  <stop offset="5%" stopColor="var(--accent)" stopOpacity={0.45} />
+                  <stop offset="95%" stopColor="var(--accent)" stopOpacity={0.02} />
+                </linearGradient>
+              </defs>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
               <XAxis dataKey="name" tick={{ fill: "var(--muted)", fontSize: 12 }} />
-              <YAxis tick={{ fill: "var(--muted)", fontSize: 12 }} />
+              <YAxis tick={{ fill: "var(--muted)", fontSize: 12 }} allowDecimals={false} />
               <Tooltip contentStyle={{ background: "var(--card)", border: "1px solid var(--border)", color: "var(--foreground)" }} />
-              <Bar dataKey="minutes" fill="var(--accent)" radius={[6, 6, 0, 0]} />
-            </BarChart>
+              <Area type="monotone" dataKey="value" stroke="var(--accent)" strokeWidth={2} fill={`url(#area-${title.replace(/\s+/g, "-")})`} />
+            </AreaChart>
           </ResponsiveContainer>
         </div>
       ) : (

@@ -14,8 +14,8 @@ export function Button({
     <button
       className={clsx(
         "inline-flex min-h-10 items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] disabled:cursor-not-allowed disabled:opacity-50",
-        variant === "primary" && "bg-[var(--accent)] text-white shadow-sm hover:brightness-95",
-        variant === "secondary" && "border border-[var(--border)] bg-[var(--surface)] text-[var(--foreground)] hover:bg-[var(--surface-elevated)]",
+        variant === "primary" && "bg-[var(--accent)] text-white shadow-sm shadow-slate-950/10 hover:brightness-95",
+        variant === "secondary" && "border border-[var(--border)] bg-[var(--card)] text-[var(--foreground)] shadow-sm shadow-slate-950/5 hover:bg-[var(--surface)]",
         variant === "ghost" && "text-[var(--muted)] hover:bg-[var(--surface)] hover:text-[var(--foreground)]",
         variant === "danger" && "bg-[var(--destructive)] text-white hover:brightness-95",
         className,
@@ -50,7 +50,7 @@ export function Textarea(props: React.TextareaHTMLAttributes<HTMLTextAreaElement
 }
 
 export function SurfaceCard({ className, children }: { className?: string; children: ReactNode }) {
-  return <section className={clsx("rounded-xl border border-[var(--border)] bg-[var(--card)] p-4 shadow-sm", className)}>{children}</section>;
+  return <section className={clsx("rounded-lg border border-[var(--border)] bg-[var(--card)] p-4 shadow-sm shadow-slate-950/5", className)}>{children}</section>;
 }
 
 export function PageHeader({ title, subtitle, action }: { title: string; subtitle?: string; action?: ReactNode }) {
@@ -81,7 +81,7 @@ export function SubjectPill({
     </>
   );
   if (!onClick) {
-    return <span className="inline-flex max-w-full items-center gap-2 rounded-full border border-[var(--border)] px-3 py-1.5 text-sm">{content}</span>;
+    return <span className="inline-flex max-w-full items-center gap-2 rounded-full border border-[var(--border)] bg-[var(--card)] px-3 py-1.5 text-sm">{content}</span>;
   }
   return (
     <button
@@ -90,7 +90,7 @@ export function SubjectPill({
       onClick={onClick}
       className={clsx(
         "inline-flex max-w-full items-center gap-2 rounded-full border px-3 py-1.5 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]",
-        selected ? "border-transparent text-white shadow-sm" : "border-[var(--border)] bg-[var(--surface)] hover:bg-[var(--surface-elevated)]",
+        selected ? "border-transparent text-white shadow-sm" : "border-[var(--border)] bg-[var(--card)] hover:bg-[var(--surface)]",
       )}
       style={selected ? { backgroundColor: subject.color } : undefined}
     >
@@ -107,7 +107,7 @@ export function TagPill({ tag, selected, onClick }: { tag: Tag; selected?: boole
     </>
   );
   if (!onClick) {
-    return <span className="inline-flex max-w-full items-center gap-1.5 rounded-full bg-[var(--surface-elevated)] px-2.5 py-1 text-xs">{content}</span>;
+    return <span className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-[var(--border)] bg-[var(--surface)] px-2.5 py-1 text-xs">{content}</span>;
   }
   return (
     <button
@@ -116,7 +116,7 @@ export function TagPill({ tag, selected, onClick }: { tag: Tag; selected?: boole
       onClick={onClick}
       className={clsx(
         "inline-flex max-w-full items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]",
-        selected ? "border-transparent text-white" : "border-[var(--border)] bg-[var(--surface)] hover:bg-[var(--surface-elevated)]",
+        selected ? "border-transparent text-white" : "border-[var(--border)] bg-[var(--card)] hover:bg-[var(--surface)]",
       )}
       style={selected ? { backgroundColor: tag.color } : undefined}
     >

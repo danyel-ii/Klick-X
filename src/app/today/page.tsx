@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { CheckCircle2, Circle, NotebookPen, Play, SkipForward } from "lucide-react";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { CheckCircle2, Circle, Minus, NotebookPen, Play, Plus, SkipForward } from "lucide-react";
 import { OnboardingDeck } from "@/components/OnboardingDeck";
 import { FocusScreensaver } from "@/components/FocusScreensaver";
 import { Button, PageHeader, SubjectPill, SurfaceCard, TagPill, Textarea, TimerRing } from "@/components/ui";
@@ -108,12 +109,32 @@ function DailySetup({ subjects, tags }: { subjects: ReturnType<typeof useAppStor
   const { t, createOrUpdateDayPlan } = useAppStore();
   const [count, setCount] = useState(3);
   const [assignments, setAssignments] = useState<DayAssignment[]>(() => Array.from({ length: 3 }, () => ({ subjectId: "", tagIds: [] })));
+  const [selectedSlot, setSelectedSlot] = useState(0);
   const [error, setError] = useState("");
 
   function resize(nextCount: number) {
-    setCount(nextCount);
+    const clamped = Math.min(12, Math.max(1, nextCount));
+    setCount(clamped);
     setAssignments((current) =>
-      Array.from({ length: nextCount }, (_, index) => current[index] ?? { subjectId: subjects[0]?.id ?? "", tagIds: [] }),
+      Array.from({ length: clamped }, (_, index) => current[index] ?? { subjectId: "", tagIds: [] }),
+    );
+    setSelectedSlot((slot) => Math.min(slot, clamped - 1));
+  }
+
+  function assignSubject(subjectId: string) {
+    const firstEmpty = assignments.findIndex((assignment) => !assignment.subjectId);
+    const target = assignments[selectedSlot]?.subjectId ? (firstEmpty === -1 ? selectedSlot : firstEmpty) : selectedSlot;
+    setSelectedSlot(target);
+    setAssignments((current) => current.map((item, index) => (index === target ? { ...item, subjectId } : item)));
+  }
+
+  function toggleTag(tagId: string) {
+    setAssignments((current) =>
+      current.map((item, index) =>
+        index === selectedSlot
+          ? { ...item, tagIds: item.tagIds.includes(tagId) ? item.tagIds.filter((id) => id !== tagId) : [...item.tagIds, tagId] }
+          : item,
+      ),
     );
   }
 
@@ -128,49 +149,80 @@ function DailySetup({ subjects, tags }: { subjects: ReturnType<typeof useAppStor
   return (
     <>
       <PageHeader title={t.today.setupTitle} subtitle={t.today.subtitle} />
-      <SurfaceCard>
-        <label className="text-sm font-semibold" htmlFor="block-count">
-          {t.today.blockCount}
-        </label>
-        <input id="block-count" type="range" min={1} max={12} value={count} onChange={(event) => resize(Number(event.target.value))} className="mt-3 w-full accent-[var(--accent)]" />
-        <div className="mt-2 font-mono text-2xl font-bold">{count}</div>
-      </SurfaceCard>
-      <div className="mt-5 grid gap-4">
-        {assignments.map((assignment, index) => (
-          <SurfaceCard key={index}>
-            <h2 className="font-bold">Block {index + 1}</h2>
-            <p className="mt-3 text-sm font-semibold text-[var(--muted)]">{t.today.chooseSubject}</p>
-            <div className="mt-2 flex flex-wrap gap-2">
+      <div className="grid gap-5 lg:grid-cols-[320px_1fr]">
+        <SurfaceCard className="h-fit">
+          <p className="text-sm font-semibold text-[var(--muted)]">{t.today.blockCount}</p>
+          <div className="mt-4 flex items-center justify-center gap-4">
+            <Button variant="secondary" aria-label="Decrease blocks" onClick={() => resize(count - 1)}>
+              <Minus className="h-4 w-4" aria-hidden />
+            </Button>
+            <div className="min-w-24 text-center font-mono text-6xl font-bold tracking-normal text-[var(--foreground)]">{count}</div>
+            <Button variant="secondary" aria-label="Increase blocks" onClick={() => resize(count + 1)}>
+              <Plus className="h-4 w-4" aria-hidden />
+            </Button>
+          </div>
+          <input id="block-count" type="range" min={1} max={12} value={count} onChange={(event) => resize(Number(event.target.value))} className="mt-5 w-full accent-[var(--accent)]" />
+        </SurfaceCard>
+        <SurfaceCard>
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-bold">{t.today.studyBoard}</h2>
+              <p className="mt-1 text-sm text-[var(--muted)]">{t.today.chooseSubject}</p>
+            </div>
+            <div className="font-mono text-sm text-[var(--muted)]">
+              {assignments.filter((assignment) => assignment.subjectId).length}/{count}
+            </div>
+          </div>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            {assignments.map((assignment, index) => {
+              const subject = subjects.find((item) => item.id === assignment.subjectId);
+              return (
+                <motion.button
+                  layout
+                  key={index}
+                  type="button"
+                  aria-pressed={selectedSlot === index}
+                  onClick={() => setSelectedSlot(index)}
+                  className={`min-h-28 rounded-lg border p-3 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] ${
+                    selectedSlot === index ? "border-[var(--accent)] bg-[var(--surface)]" : "border-dashed border-[var(--border)] bg-[var(--background)]/50"
+                  }`}
+                  style={subject ? { borderColor: subject.color, boxShadow: selectedSlot === index ? `0 0 0 3px ${subject.color}22` : undefined } : undefined}
+                >
+                  <span className="text-xs font-semibold uppercase tracking-wide text-[var(--muted)]">Block {index + 1}</span>
+                  {subject ? (
+                    <motion.div layoutId={`setup-subject-${subject.id}-${index}`} className="mt-3 flex items-center gap-2 font-semibold">
+                      <span className="h-3 w-3 rounded-full" style={{ backgroundColor: subject.color }} />
+                      {subject.name}
+                    </motion.div>
+                  ) : (
+                    <span className="mt-3 block text-sm text-[var(--muted)]">{t.today.chooseSubject}</span>
+                  )}
+                  <div className="mt-3 flex flex-wrap gap-1.5">
+                    {tags
+                      .filter((tag) => assignment.tagIds.includes(tag.id))
+                      .map((tag) => (
+                        <TagPill key={tag.id} tag={tag} />
+                      ))}
+                  </div>
+                </motion.button>
+              );
+            })}
+          </div>
+          <div className="mt-5 rounded-lg border border-[var(--border)] bg-[var(--surface)] p-3">
+            <p className="text-sm font-semibold text-[var(--muted)]">{t.today.chooseSubject}</p>
+            <div className="mt-3 flex flex-wrap gap-2">
               {subjects.map((subject) => (
-                <SubjectPill
-                  key={subject.id}
-                  subject={subject}
-                  selected={assignment.subjectId === subject.id}
-                  onClick={() => setAssignments((current) => current.map((item, itemIndex) => (itemIndex === index ? { ...item, subjectId: subject.id } : item)))}
-                />
+                <SubjectPill key={subject.id} subject={subject} selected={assignments[selectedSlot]?.subjectId === subject.id} onClick={() => assignSubject(subject.id)} />
               ))}
             </div>
             <p className="mt-4 text-sm font-semibold text-[var(--muted)]">{t.today.chooseTags}</p>
-            <div className="mt-2 flex flex-wrap gap-2">
+            <div className="mt-3 flex flex-wrap gap-2">
               {tags.map((tag) => (
-                <TagPill
-                  key={tag.id}
-                  tag={tag}
-                  selected={assignment.tagIds.includes(tag.id)}
-                  onClick={() =>
-                    setAssignments((current) =>
-                      current.map((item, itemIndex) =>
-                        itemIndex === index
-                          ? { ...item, tagIds: item.tagIds.includes(tag.id) ? item.tagIds.filter((id) => id !== tag.id) : [...item.tagIds, tag.id] }
-                          : item,
-                      ),
-                    )
-                  }
-                />
+                <TagPill key={tag.id} tag={tag} selected={assignments[selectedSlot]?.tagIds.includes(tag.id)} onClick={() => toggleTag(tag.id)} />
               ))}
             </div>
-          </SurfaceCard>
-        ))}
+          </div>
+        </SurfaceCard>
       </div>
       {error ? <p className="mt-4 text-sm font-semibold text-[var(--destructive)]">{error}</p> : null}
       <Button className="mt-5 w-full sm:w-auto" onClick={() => void createPlan()}>
@@ -208,17 +260,57 @@ function StudyBlockCard({
   onFocus: () => void;
 }) {
   const { t } = useAppStore();
+  const reduceMotion = useReducedMotion();
+  const [expanded, setExpanded] = useState(block.status === "active");
   const subject = subjects.find((item) => item.id === block.subjectId);
   const blockTags = tags.filter((tag) => block.tagIds.includes(tag.id));
   const elapsed = visibleElapsedSeconds(block, now);
   const activeTags = tags.filter((tag) => !tag.archivedAt);
   const activeSubjects = subjects.filter((subject) => !subject.archivedAt);
+  const subjectColor = subject?.color ?? "#64748b";
+  const readableText = readableTextColor(subjectColor);
+  const isDarkText = readableText === "#0f172a";
+  const stateClass =
+    block.status === "active"
+      ? "border-transparent shadow-lg"
+      : block.status === "planned"
+        ? "border-dashed bg-[var(--card)]/70"
+        : block.status === "paused"
+          ? "border-transparent"
+          : block.status === "completed"
+            ? "border-[var(--border)] bg-[var(--surface)]"
+            : "border-[var(--border)] bg-[var(--surface)] opacity-55";
+  const stateStyle =
+    block.status === "active"
+      ? { backgroundColor: subjectColor, color: readableText, boxShadow: `0 0 0 1px ${subjectColor}66, 0 18px 50px ${subjectColor}40` }
+      : block.status === "planned"
+        ? { borderColor: subjectColor, boxShadow: `inset 4px 0 0 ${subjectColor}` }
+        : block.status === "paused"
+          ? {
+              borderColor: subjectColor,
+              backgroundColor: `color-mix(in srgb, ${subjectColor} 20%, var(--card))`,
+              backgroundImage: `repeating-linear-gradient(135deg, ${subjectColor}22 0 8px, transparent 8px 16px)`,
+            }
+          : block.status === "skipped"
+            ? { backgroundImage: "repeating-linear-gradient(135deg, transparent 0 8px, color-mix(in srgb, var(--muted) 18%, transparent) 8px 10px)" }
+            : undefined;
 
   return (
-    <SurfaceCard className={block.status === "active" ? "ring-2 ring-[var(--ring)]" : ""}>
-      <div className="flex items-start justify-between gap-3">
+    <motion.article
+      layout
+      onClick={() => setExpanded((value) => !value)}
+      animate={block.status === "completed" && !reduceMotion ? { scale: [1, 1.03, 1] } : undefined}
+      transition={{ duration: 0.24 }}
+      className={`relative overflow-hidden rounded-lg border p-4 shadow-sm shadow-slate-950/5 transition focus-within:ring-2 focus-within:ring-[var(--ring)] ${stateClass} ${
+        block.status === "skipped" ? "line-through" : ""
+      }`}
+      style={stateStyle}
+    >
+      {block.status === "active" ? <motion.div className="pointer-events-none absolute inset-0 rounded-lg" animate={reduceMotion ? undefined : { opacity: [0.18, 0.32, 0.18] }} transition={{ duration: 2.4, repeat: Infinity }} style={{ boxShadow: `inset 0 0 0 999px ${isDarkText ? "rgba(255,255,255,0.08)" : "rgba(255,255,255,0.03)"}` }} /> : null}
+      {block.status === "completed" && subject ? <span className="absolute right-3 top-3 h-3 w-3 rounded-full" style={{ backgroundColor: subject.color }} /> : null}
+      <div className="relative flex items-start justify-between gap-3">
         <div>
-          <div className="flex items-center gap-2 text-sm font-semibold text-[var(--muted)]">
+          <div className={`flex items-center gap-2 text-sm font-semibold ${block.status === "active" ? "" : "text-[var(--muted)]"}`}>
             {block.status === "completed" ? <CheckCircle2 className="h-4 w-4 text-[var(--success)]" /> : <Circle className="h-4 w-4" />}
             Block {block.index + 1} · {t.status[block.status]}
           </div>
@@ -226,58 +318,71 @@ function StudyBlockCard({
         </div>
         <div className="font-mono text-lg font-bold">{formatDuration(elapsed)}</div>
       </div>
-      <div className="mt-3 flex flex-wrap gap-2">
+      <div className="relative mt-3 flex flex-wrap gap-2">
         {blockTags.map((tag) => (
           <TagPill key={tag.id} tag={tag} />
         ))}
       </div>
-      <details className="mt-4">
-        <summary className="cursor-pointer text-sm font-semibold text-[var(--muted)]">{t.today.changeSubject}</summary>
-        <div className="mt-3 flex flex-wrap gap-2">
-          {activeSubjects.map((item) => (
-            <SubjectPill key={item.id} subject={item} selected={item.id === block.subjectId} onClick={() => onSubject(item.id)} />
-          ))}
-        </div>
-      </details>
-      <details className="mt-3">
-        <summary className="cursor-pointer text-sm font-semibold text-[var(--muted)]">{t.today.changeTags}</summary>
-        <div className="mt-3 flex flex-wrap gap-2">
-          {activeTags.map((tag) => (
-            <TagPill
-              key={tag.id}
-              tag={tag}
-              selected={block.tagIds.includes(tag.id)}
-              onClick={() => onTags(block.tagIds.includes(tag.id) ? block.tagIds.filter((id) => id !== tag.id) : [...block.tagIds, tag.id])}
-            />
-          ))}
-        </div>
-      </details>
-      <label className="mt-4 flex items-center gap-2 text-sm font-semibold text-[var(--muted)]">
-        <NotebookPen className="h-4 w-4" aria-hidden />
-        {t.today.notes}
-      </label>
-      <Textarea value={block.note ?? ""} onChange={(event) => onNote(event.target.value)} placeholder={t.today.notePlaceholder} className="mt-2 w-full" />
-      <div className="mt-4 flex flex-wrap gap-2">
-        {block.status === "active" ? (
-          <Button onClick={onPause}>{t.actions.pause}</Button>
-        ) : (
-          <Button onClick={onStart} disabled={block.status === "completed" || block.status === "skipped"}>
-            <Play className="h-4 w-4" aria-hidden />
-            {block.status === "paused" ? t.actions.resume : t.actions.start}
-          </Button>
+      <AnimatePresence initial={false}>
+        {(expanded || block.status === "active") && (
+          <motion.div
+            key="controls"
+            initial={reduceMotion ? false : { height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={reduceMotion ? undefined : { height: 0, opacity: 0 }}
+            className="relative overflow-hidden"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <details className="mt-4">
+              <summary className={`cursor-pointer text-sm font-semibold ${block.status === "active" ? "" : "text-[var(--muted)]"}`}>{t.today.changeSubject}</summary>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {activeSubjects.map((item) => (
+                  <SubjectPill key={item.id} subject={item} selected={item.id === block.subjectId} onClick={() => onSubject(item.id)} />
+                ))}
+              </div>
+            </details>
+            <details className="mt-3">
+              <summary className={`cursor-pointer text-sm font-semibold ${block.status === "active" ? "" : "text-[var(--muted)]"}`}>{t.today.changeTags}</summary>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {activeTags.map((tag) => (
+                  <TagPill
+                    key={tag.id}
+                    tag={tag}
+                    selected={block.tagIds.includes(tag.id)}
+                    onClick={() => onTags(block.tagIds.includes(tag.id) ? block.tagIds.filter((id) => id !== tag.id) : [...block.tagIds, tag.id])}
+                  />
+                ))}
+              </div>
+            </details>
+            <label className={`mt-4 flex items-center gap-2 text-sm font-semibold ${block.status === "active" ? "" : "text-[var(--muted)]"}`}>
+              <NotebookPen className="h-4 w-4" aria-hidden />
+              {t.today.notes}
+            </label>
+            <Textarea value={block.note ?? ""} onChange={(event) => onNote(event.target.value)} placeholder={t.today.notePlaceholder} className="mt-2 w-full bg-[var(--card)]/90" />
+            <div className="mt-4 flex flex-wrap gap-2">
+              {block.status === "active" ? (
+                <Button onClick={onPause}>{t.actions.pause}</Button>
+              ) : (
+                <Button onClick={onStart} disabled={block.status === "completed" || block.status === "skipped"}>
+                  <Play className="h-4 w-4" aria-hidden />
+                  {block.status === "paused" ? t.actions.resume : t.actions.start}
+                </Button>
+              )}
+              <Button variant="secondary" onClick={onComplete} disabled={block.status === "completed" || block.status === "skipped"}>
+                {t.actions.complete}
+              </Button>
+              <Button variant="ghost" onClick={onSkip} disabled={block.status === "completed" || block.status === "skipped"}>
+                <SkipForward className="h-4 w-4" aria-hidden />
+                {t.actions.skip}
+              </Button>
+              <Button variant="secondary" onClick={onFocus} disabled={block.status !== "active"}>
+                {t.today.focusMode}
+              </Button>
+            </div>
+          </motion.div>
         )}
-        <Button variant="secondary" onClick={onComplete} disabled={block.status === "completed" || block.status === "skipped"}>
-          {t.actions.complete}
-        </Button>
-        <Button variant="ghost" onClick={onSkip} disabled={block.status === "completed" || block.status === "skipped"}>
-          <SkipForward className="h-4 w-4" aria-hidden />
-          {t.actions.skip}
-        </Button>
-        <Button variant="secondary" onClick={onFocus} disabled={block.status !== "active"}>
-          {t.today.focusMode}
-        </Button>
-      </div>
-    </SurfaceCard>
+      </AnimatePresence>
+    </motion.article>
   );
 }
 
@@ -295,4 +400,14 @@ function ActiveBlockPanel({ block, now }: { block: StudyBlock; now: Date }) {
       </div>
     </div>
   );
+}
+
+function readableTextColor(hex: string) {
+  const normalized = hex.replace("#", "");
+  if (normalized.length !== 6) return "#ffffff";
+  const red = Number.parseInt(normalized.slice(0, 2), 16);
+  const green = Number.parseInt(normalized.slice(2, 4), 16);
+  const blue = Number.parseInt(normalized.slice(4, 6), 16);
+  const luminance = (0.2126 * red + 0.7152 * green + 0.0722 * blue) / 255;
+  return luminance > 0.62 ? "#0f172a" : "#ffffff";
 }
