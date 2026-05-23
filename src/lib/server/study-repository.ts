@@ -2,6 +2,7 @@ import { neon, type NeonQueryFunction } from "@neondatabase/serverless";
 import { buildStatsSummary } from "@/lib/analytics";
 import { defaultTagColorValues, resolveSubjectColor, resolveTagColor, subjectColorValues } from "@/lib/colors";
 import { localDateKey } from "@/lib/date";
+import { buildDailyFractal } from "@/lib/fractals";
 import { detectLocale } from "@/lib/i18n";
 import { normalizeExportPayload } from "@/lib/import-validation";
 import { accumulateElapsed } from "@/lib/timer";
@@ -9,6 +10,7 @@ import type {
   AppSettings,
   AppSnapshot,
   CalendarDaySummary,
+  DailyFractal,
   DayAssignment,
   ExportPayload,
   Locale,
@@ -125,11 +127,21 @@ async function ensureSchema() {
           data JSONB NOT NULL
         )
       `;
+      await db`
+        CREATE TABLE IF NOT EXISTS daily_fractals (
+          id TEXT PRIMARY KEY,
+          date TEXT NOT NULL UNIQUE,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          data JSONB NOT NULL
+        )
+      `;
       await db`CREATE INDEX IF NOT EXISTS subjects_archived_at_idx ON subjects (archived_at)`;
       await db`CREATE INDEX IF NOT EXISTS tags_archived_at_idx ON tags (archived_at)`;
       await db`CREATE INDEX IF NOT EXISTS study_blocks_date_idx ON study_blocks (date)`;
       await db`CREATE INDEX IF NOT EXISTS study_blocks_subject_id_idx ON study_blocks (subject_id)`;
       await db`CREATE INDEX IF NOT EXISTS study_blocks_status_idx ON study_blocks (status)`;
+      await db`CREATE INDEX IF NOT EXISTS daily_fractals_date_idx ON daily_fractals (date)`;
     })();
   }
   return schemaReady;
@@ -189,6 +201,19 @@ async function putBlock(block: StudyBlock) {
       tag_ids = EXCLUDED.tag_ids,
       started_at = EXCLUDED.started_at,
       created_at = EXCLUDED.created_at,
+      data = EXCLUDED.data
+  `;
+}
+
+async function putDailyFractal(fractal: DailyFractal) {
+  const db = await readySql();
+  await db`
+    INSERT INTO daily_fractals (id, date, created_at, updated_at, data)
+    VALUES (${fractal.id}, ${fractal.date}, ${fractal.createdAt}, ${fractal.updatedAt}, ${json(fractal)}::jsonb)
+    ON CONFLICT (id) DO UPDATE SET
+      date = EXCLUDED.date,
+      created_at = EXCLUDED.created_at,
+      updated_at = EXCLUDED.updated_at,
       data = EXCLUDED.data
   `;
 }
@@ -476,7 +501,9 @@ export async function startBlock(blockId: string) {
   await pauseActiveBlocks(blockId);
   const block = await getBlock(blockId);
   if (!block) return;
-  await putBlock({ ...block, status: "active", startedAt: nowIso(), updatedAt: nowIso() });
+  const now = nowIso();
+  await putBlock({ ...block, status: "active", startedAt: now, updatedAt: now });
+  await upsertDailyFractal(block.date, now);
 }
 
 export async function pauseBlock(blockId: string) {
@@ -498,6 +525,24 @@ export async function completeBlock(blockId: string) {
     completedAt: now.toISOString(),
     updatedAt: now.toISOString(),
   });
+  await upsertDailyFractal(block.date, now.toISOString());
+}
+
+async function getDailyFractal(date: string) {
+  const db = await readySql();
+  const rows = await db`SELECT data FROM daily_fractals WHERE date = ${date} LIMIT 1`;
+  return rows[0] ? dataOf<DailyFractal>(rows[0] as { data: DailyFractal | string }) : null;
+}
+
+async function listDailyFractals() {
+  const db = await readySql();
+  const rows = await db`SELECT data FROM daily_fractals ORDER BY date`;
+  return rows.map((row) => dataOf<DailyFractal>(row as { data: DailyFractal | string }));
+}
+
+async function upsertDailyFractal(date: string, now: string) {
+  const [existing, blocks, subjects, tags] = await Promise.all([getDailyFractal(date), listAllBlocks(), listSubjects(), listTags()]);
+  await putDailyFractal(buildDailyFractal({ existing, date, blocks, subjects, tags, now }));
 }
 
 export async function skipBlock(blockId: string) {
@@ -547,14 +592,15 @@ export async function getStats(filters: StatsFilters): Promise<StatsSummary> {
 }
 
 export async function exportLocalData(): Promise<ExportPayload> {
-  const [subjects, tags, studyDays, studyBlocks, settings] = await Promise.all([listSubjects(), listTags(), listAllDays(), listAllBlocks(), getSettings()]);
-  return { version: 1, exportedAt: nowIso(), subjects, tags, studyDays, studyBlocks, settings };
+  const [subjects, tags, studyDays, studyBlocks, dailyFractals, settings] = await Promise.all([listSubjects(), listTags(), listAllDays(), listAllBlocks(), listDailyFractals(), getSettings()]);
+  return { version: 1, exportedAt: nowIso(), subjects, tags, studyDays, studyBlocks, dailyFractals, settings };
 }
 
 export async function importLocalData(payload: ExportPayload) {
   const next = normalizeExportPayload(payload);
   const db = await readySql();
   await db`DELETE FROM study_blocks`;
+  await db`DELETE FROM daily_fractals`;
   await db`DELETE FROM study_days`;
   await db`DELETE FROM subjects`;
   await db`DELETE FROM tags`;
@@ -563,12 +609,14 @@ export async function importLocalData(payload: ExportPayload) {
   for (const tag of next.tags) await putTag(tag);
   for (const day of next.studyDays) await putDay(day);
   for (const block of next.studyBlocks) await putBlock(block);
+  for (const fractal of next.dailyFractals) await putDailyFractal(fractal);
   if (next.settings) await updateSettings(next.settings);
 }
 
 export async function resetLocalData() {
   const db = await readySql();
   await db`DELETE FROM study_blocks`;
+  await db`DELETE FROM daily_fractals`;
   await db`DELETE FROM study_days`;
   await db`DELETE FROM subjects`;
   await db`DELETE FROM tags`;
@@ -579,14 +627,15 @@ export async function getSnapshot(): Promise<AppSnapshot> {
   const settings = await getSettings();
   await seedDefaultSubjectsIfEmpty(settings.locale);
   await seedDefaultTagsIfEmpty(settings.locale);
-  const [subjects, tags, today, calendarSummary, allDays, allBlocks] = await Promise.all([
+  const [subjects, tags, today, calendarSummary, allDays, allBlocks, dailyFractals] = await Promise.all([
     listSubjects(),
     listTags(),
     getTodayDay(),
     getCalendarSummary(),
     listAllDays(),
     listAllBlocks(),
+    listDailyFractals(),
   ]);
   const todayBlocks = today ? allBlocks.filter((block) => block.date === today.date).sort((a, b) => a.index - b.index) : [];
-  return { settings, subjects, tags, today, todayBlocks, calendarSummary, allDays, allBlocks };
+  return { settings, subjects, tags, today, todayBlocks, calendarSummary, allDays, allBlocks, dailyFractals };
 }

@@ -1,16 +1,18 @@
 "use client";
 
 import { addMonths, format, isSameMonth, subMonths } from "date-fns";
-import { ChevronLeft, ChevronRight, Minus, Plus } from "lucide-react";
+import { ChevronLeft, ChevronRight, GalleryHorizontal, Minus, Plus } from "lucide-react";
 import { useMemo, useState } from "react";
+import { DailyFractalCanvas } from "@/components/DailyFractalCanvas";
 import { Button, PageHeader, SubjectPill, SurfaceCard, TagPill } from "@/components/ui";
 import { calendarMonthDays, formatDate, isToday, localDateKey } from "@/lib/date";
+import { buildDailyFractal } from "@/lib/fractals";
 import { useAppStore } from "@/lib/store";
 import { formatMinutes } from "@/lib/timer";
 import type { DayAssignment, Subject, Tag } from "@/lib/types";
 
 export default function CalendarPage() {
-  const { t, settings, calendarSummary, allBlocks, subjects, tags, createOrUpdateDayPlan } = useAppStore();
+  const { t, settings, calendarSummary, allBlocks, subjects, tags, dailyFractals, createOrUpdateDayPlan } = useAppStore();
   const [month, setMonth] = useState(new Date());
   const [selected, setSelected] = useState(localDateKey());
   const [draftCount, setDraftCount] = useState(3);
@@ -23,6 +25,18 @@ export default function CalendarPage() {
   const selectedBlocks = allBlocks.filter((block) => block.date === selected).sort((a, b) => a.index - b.index);
   const activeSubjects = subjects.filter((subject) => !subject.archivedAt);
   const activeTags = tags.filter((tag) => !tag.archivedAt);
+  const fractalsByDate = useMemo(() => new Map(dailyFractals.map((fractal) => [fractal.date, fractal])), [dailyFractals]);
+  const fallbackFractals = useMemo(
+    () =>
+      calendarSummary
+        .filter((summary) => summary.studiedSeconds > 0)
+        .map((summary) => fractalsByDate.get(summary.date) ?? buildDailyFractal({ date: summary.date, blocks: allBlocks, subjects, tags, now: `${summary.date}T23:59:59.000Z` }))
+        .sort((a, b) => b.date.localeCompare(a.date)),
+    [allBlocks, calendarSummary, fractalsByDate, subjects, tags],
+  );
+  const selectedFractal =
+    fractalsByDate.get(selected) ??
+    (selectedSummary?.studiedSeconds ? buildDailyFractal({ date: selected, blocks: allBlocks, subjects, tags, now: `${selected}T23:59:59.000Z` }) : null);
 
   function resizeDraft(nextCount: number) {
     const clamped = Math.min(12, Math.max(1, nextCount));
@@ -88,6 +102,16 @@ export default function CalendarPage() {
         </SurfaceCard>
         <SurfaceCard>
           <h2 className="text-lg font-bold">{formatDate(selected, settings?.locale ?? "en")}</h2>
+          {selectedFractal ? (
+            <div className="mt-4 overflow-hidden rounded-2xl border border-[var(--app-border)] bg-[var(--background)]/30 p-2">
+              <DailyFractalCanvas fractal={selectedFractal} label={`${t.calendar.fractalForDay} ${formatDate(selected, settings?.locale ?? "en")}`} />
+              <div className="mt-2 grid grid-cols-3 gap-2 px-1 pb-1 text-center text-xs text-[var(--muted)]">
+                <span>{selectedFractal.params.completedBlocksToday} {t.calendar.pomodoros}</span>
+                <span>{selectedFractal.params.overallStudyStreakDays} {t.calendar.streak}</span>
+                <span>{selectedFractal.params.daysSinceLastUse} {t.calendar.daysRested}</span>
+              </div>
+            </div>
+          ) : null}
           {selectedSummary ? (
             <div className="mt-3 grid gap-2 text-sm text-[var(--muted)]">
               <p>{t.calendar.studied}: {formatMinutes(selectedSummary.studiedSeconds)}</p>
@@ -133,6 +157,37 @@ export default function CalendarPage() {
           ) : null}
         </SurfaceCard>
       </div>
+      <SurfaceCard className="mt-5">
+        <div className="flex items-center gap-2">
+          <GalleryHorizontal className="h-5 w-5 text-[var(--accent)]" aria-hidden />
+          <div>
+            <h2 className="text-lg font-bold">{t.calendar.fractalGallery}</h2>
+            <p className="text-sm text-[var(--muted)]">{t.calendar.fractalSubtitle}</p>
+          </div>
+        </div>
+        {fallbackFractals.length ? (
+          <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            {fallbackFractals.map((fractal) => (
+              <button
+                key={fractal.id}
+                type="button"
+                onClick={() => setSelected(fractal.date)}
+                className={`rounded-2xl border bg-[var(--background)]/30 p-2 text-left transition hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] ${
+                  selected === fractal.date ? "border-[var(--accent)]" : "border-[var(--app-border)]"
+                }`}
+              >
+                <DailyFractalCanvas fractal={fractal} label={`${t.calendar.fractalForDay} ${formatDate(fractal.date, settings?.locale ?? "en")}`} className="min-h-36" />
+                <div className="mt-2 flex items-center justify-between gap-2 px-1 text-xs text-[var(--muted)]">
+                  <span className="font-semibold text-[var(--foreground)]">{formatDate(fractal.date, settings?.locale ?? "en")}</span>
+                  <span>{fractal.params.completedBlocksToday} {t.calendar.pomodoros}</span>
+                </div>
+              </button>
+            ))}
+          </div>
+        ) : (
+          <p className="mt-4 text-sm text-[var(--muted)]">{t.calendar.emptyGallery}</p>
+        )}
+      </SurfaceCard>
     </>
   );
 }

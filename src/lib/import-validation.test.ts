@@ -57,6 +57,7 @@ function validPayload(): ExportPayload {
         updatedAt: now,
       },
     ],
+    dailyFractals: [],
     settings: {
       id: "app",
       blockMinutes: 30,
@@ -81,6 +82,7 @@ describe("normalizeExportPayload", () => {
     expect(normalized.tags[0].color).toBe("var(--color-primary)");
     expect(normalized.subjects[0].color).toBe("var(--color-primary)");
     expect(normalized.studyBlocks[0].tagIds).toEqual(["tag_focus"]);
+    expect(normalized.dailyFractals).toEqual([]);
     expect(normalized.settings?.locale).toBe("en");
   });
 

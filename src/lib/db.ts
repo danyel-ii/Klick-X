@@ -3,11 +3,13 @@ import { buildStatsSummary } from "./analytics";
 import { defaultTagColorValues, resolveSubjectColor, resolveTagColor, subjectColorValues } from "./colors";
 import { detectLocale } from "./i18n";
 import { localDateKey } from "./date";
+import { buildDailyFractal } from "./fractals";
 import { normalizeExportPayload } from "./import-validation";
 import { accumulateElapsed } from "./timer";
 import type {
   AppSettings,
   CalendarDaySummary,
+  DailyFractal,
   DayAssignment,
   ExportPayload,
   Locale,
@@ -35,6 +37,7 @@ class StudyBlocksDatabase extends Dexie {
   tags!: Table<Tag, string>;
   studyDays!: Table<StudyDay, string>;
   studyBlocks!: Table<StudyBlock, string>;
+  dailyFractals!: Table<DailyFractal, string>;
   settings!: Table<AppSettings, string>;
 
   constructor() {
@@ -44,6 +47,15 @@ class StudyBlocksDatabase extends Dexie {
       tags: "id, archivedAt, createdAt",
       studyDays: "id, &date, createdAt",
       studyBlocks: "id, dayId, date, subjectId, status, *tagIds, startedAt",
+      dailyFractals: "id, &date, createdAt, updatedAt",
+      settings: "id",
+    });
+    this.version(2).stores({
+      subjects: "id, archivedAt, createdAt",
+      tags: "id, archivedAt, createdAt",
+      studyDays: "id, &date, createdAt",
+      studyBlocks: "id, dayId, date, subjectId, status, *tagIds, startedAt",
+      dailyFractals: "id, &date, createdAt, updatedAt",
       settings: "id",
     });
   }
@@ -304,11 +316,13 @@ async function pauseActiveBlocks(exceptId?: string) {
 }
 
 export async function startBlock(blockId: string) {
-  await db.transaction("rw", db.studyBlocks, async () => {
+  await db.transaction("rw", [db.studyBlocks, db.dailyFractals, db.subjects, db.tags], async () => {
     await pauseActiveBlocks(blockId);
     const block = await db.studyBlocks.get(blockId);
     if (!block) return;
-    await db.studyBlocks.put({ ...block, status: "active", startedAt: nowIso(), updatedAt: nowIso() });
+    const now = nowIso();
+    await db.studyBlocks.put({ ...block, status: "active", startedAt: now, updatedAt: now });
+    await upsertDailyFractal(block.date, now);
   });
 }
 
@@ -329,14 +343,27 @@ export async function completeBlock(blockId: string) {
   const block = await db.studyBlocks.get(blockId);
   if (!block) return;
   const now = new Date();
-  await db.studyBlocks.put({
-    ...block,
-    status: "completed",
-    elapsedSeconds: accumulateElapsed(block, now),
-    startedAt: null,
-    completedAt: now.toISOString(),
-    updatedAt: now.toISOString(),
+  await db.transaction("rw", [db.studyBlocks, db.dailyFractals, db.subjects, db.tags], async () => {
+    await db.studyBlocks.put({
+      ...block,
+      status: "completed",
+      elapsedSeconds: accumulateElapsed(block, now),
+      startedAt: null,
+      completedAt: now.toISOString(),
+      updatedAt: now.toISOString(),
+    });
+    await upsertDailyFractal(block.date, now.toISOString());
   });
+}
+
+async function upsertDailyFractal(date: string, now: string) {
+  const [existing, blocks, subjects, tags] = await Promise.all([
+    db.dailyFractals.where("date").equals(date).first(),
+    db.studyBlocks.toArray(),
+    db.subjects.toArray(),
+    db.tags.toArray(),
+  ]);
+  await db.dailyFractals.put(buildDailyFractal({ existing, date, blocks, subjects, tags, now }));
 }
 
 export async function skipBlock(blockId: string) {
@@ -391,30 +418,32 @@ export async function getStats(filters: StatsFilters): Promise<StatsSummary> {
 }
 
 export async function exportLocalData(): Promise<ExportPayload> {
-  const [subjects, tags, studyDays, studyBlocks, settings] = await Promise.all([
+  const [subjects, tags, studyDays, studyBlocks, dailyFractals, settings] = await Promise.all([
     db.subjects.toArray(),
     db.tags.toArray(),
     db.studyDays.toArray(),
     db.studyBlocks.toArray(),
+    db.dailyFractals.toArray(),
     db.settings.get("app"),
   ]);
-  return { version: 1, exportedAt: nowIso(), subjects, tags, studyDays, studyBlocks, settings: settings ?? null };
+  return { version: 1, exportedAt: nowIso(), subjects, tags, studyDays, studyBlocks, dailyFractals, settings: settings ?? null };
 }
 
 export async function importLocalData(payload: ExportPayload) {
   const next = normalizeExportPayload(payload);
-  await db.transaction("rw", [db.subjects, db.tags, db.studyDays, db.studyBlocks, db.settings], async () => {
-    await Promise.all([db.subjects.clear(), db.tags.clear(), db.studyDays.clear(), db.studyBlocks.clear(), db.settings.clear()]);
+  await db.transaction("rw", [db.subjects, db.tags, db.studyDays, db.studyBlocks, db.dailyFractals, db.settings], async () => {
+    await Promise.all([db.subjects.clear(), db.tags.clear(), db.studyDays.clear(), db.studyBlocks.clear(), db.dailyFractals.clear(), db.settings.clear()]);
     await db.subjects.bulkPut(next.subjects);
     await db.tags.bulkPut(next.tags.map((tag) => ({ ...tag, color: resolveTagColor(tag.color) })));
     await db.studyDays.bulkPut(next.studyDays);
     await db.studyBlocks.bulkPut(next.studyBlocks);
+    await db.dailyFractals.bulkPut(next.dailyFractals);
     if (next.settings) await db.settings.put(next.settings);
   });
 }
 
 export async function resetLocalData() {
-  await db.transaction("rw", [db.subjects, db.tags, db.studyDays, db.studyBlocks, db.settings], async () => {
-    await Promise.all([db.subjects.clear(), db.tags.clear(), db.studyDays.clear(), db.studyBlocks.clear(), db.settings.clear()]);
+  await db.transaction("rw", [db.subjects, db.tags, db.studyDays, db.studyBlocks, db.dailyFractals, db.settings], async () => {
+    await Promise.all([db.subjects.clear(), db.tags.clear(), db.studyDays.clear(), db.studyBlocks.clear(), db.dailyFractals.clear(), db.settings.clear()]);
   });
 }

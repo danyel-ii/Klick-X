@@ -9,6 +9,7 @@ import type {
   AppSettings,
   AppSnapshot,
   CalendarDaySummary,
+  DailyFractal,
   DayAssignment,
   ExportPayload,
   Locale,
@@ -29,6 +30,7 @@ type AppState = {
   todayBlocks: StudyBlock[];
   allDays: StudyDay[];
   allBlocks: StudyBlock[];
+  dailyFractals: DailyFractal[];
   calendarSummary: CalendarDaySummary[];
   stats: StatsSummary | null;
   t: Dictionary;
@@ -97,16 +99,17 @@ async function loadSnapshot() {
   const settings = await data.getSettings();
   await data.seedDefaultSubjectsIfEmpty(settings.locale);
   await data.seedDefaultTagsIfEmpty(settings.locale);
-  const [subjects, tags, today, calendarSummary, allDays, allBlocks] = await Promise.all([
+  const [subjects, tags, today, calendarSummary, allDays, allBlocks, dailyFractals] = await Promise.all([
     data.listSubjects(),
     data.listTags(),
     data.getTodayDay(),
     data.getCalendarSummary(),
     data.db.studyDays.toArray(),
     data.db.studyBlocks.toArray(),
+    data.db.dailyFractals.toArray(),
   ]);
   const todayBlocks = today ? await data.listBlocksForDate(today.date) : [];
-  return { settings, subjects, tags, today: today ?? null, todayBlocks, calendarSummary, allDays, allBlocks };
+  return { settings, subjects, tags, today: today ?? null, todayBlocks, calendarSummary, allDays, allBlocks, dailyFractals };
 }
 
 async function loadRemoteSnapshot() {
@@ -152,6 +155,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   todayBlocks: [],
   allDays: [],
   allBlocks: [],
+  dailyFractals: [],
   calendarSummary: [],
   stats: null,
   t: dictionaries.en,
@@ -419,6 +423,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         tags: state.tags,
         studyDays: state.allDays,
         studyBlocks: state.allBlocks,
+        dailyFractals: state.dailyFractals,
         settings: state.settings,
       };
     }

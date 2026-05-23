@@ -55,6 +55,57 @@ export type StudyBlock = {
   updatedAt: string;
 };
 
+export type FractalParams = {
+  date: string;
+  dailyPomodoroCount: number;
+  consecutivePomodoroStreak: number;
+  overallStudyStreakDays: number;
+  longestStudyStreakDays: number;
+  subjectStreaks: Record<string, number>;
+  tagStreaks: Record<string, number>;
+  totalMinutesToday: number;
+  completedBlocksToday: number;
+  daysSinceLastUse: number;
+  dominantSubjectId?: string;
+  dominantSubjectColor: string;
+  dominantTagIds: string[];
+  dominantTagColors: string[];
+  seed: string;
+};
+
+export type FractalBranchConfig = {
+  angle: number;
+  length: number;
+  width: number;
+  color: string;
+};
+
+export type FractalConfig = {
+  seed: string;
+  background: string[];
+  palette: string[];
+  depth: number;
+  symmetry: number;
+  rotation: number;
+  curl: number;
+  spread: number;
+  branchScale: number;
+  lineWidth: number;
+  glow: number;
+  rings: number;
+  branches: FractalBranchConfig[];
+};
+
+export type DailyFractal = {
+  id: string;
+  date: string;
+  seed: string;
+  params: FractalParams;
+  config: FractalConfig;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type AppSettings = {
   id: "app";
   blockMinutes: number;
@@ -137,6 +188,7 @@ export type ExportPayload = {
   tags: Tag[];
   studyDays: StudyDay[];
   studyBlocks: StudyBlock[];
+  dailyFractals: DailyFractal[];
   settings: AppSettings | null;
 };
 
@@ -149,4 +201,5 @@ export type AppSnapshot = {
   calendarSummary: CalendarDaySummary[];
   allDays: StudyDay[];
   allBlocks: StudyBlock[];
+  dailyFractals: DailyFractal[];
 };
