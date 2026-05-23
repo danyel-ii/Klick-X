@@ -10,14 +10,24 @@ function cssColor(value: string, fallback: string) {
   const variableMatch = value.match(/^var\((--[^)]+)\)$/);
   if (variableMatch) {
     const resolved = root.getPropertyValue(variableMatch[1]).trim();
-    return resolved ? `oklch(${resolved})` : fallback;
+    if (!resolved) return fallback;
+    return resolved.includes("(") || resolved.startsWith("#") ? resolved : `oklch(${resolved})`;
   }
   if (value.startsWith("oklch(var(")) {
     const name = value.match(/var\((--[^)]+)\)/)?.[1];
     const resolved = name ? root.getPropertyValue(name).trim() : "";
-    return resolved ? `oklch(${resolved})` : fallback;
+    if (!resolved) return fallback;
+    return resolved.includes("(") || resolved.startsWith("#") ? resolved : `oklch(${resolved})`;
   }
   return value;
+}
+
+function addColorStop(gradient: CanvasGradient, offset: number, color: string, fallback: string) {
+  try {
+    gradient.addColorStop(offset, color);
+  } catch {
+    gradient.addColorStop(offset, fallback);
+  }
 }
 
 function drawBranch(
@@ -83,9 +93,9 @@ export function DailyFractalCanvas({
     ctx.clearRect(0, 0, width, height);
 
     const bg = ctx.createRadialGradient(width * 0.45, height * 0.42, width * 0.1, width * 0.5, height * 0.48, width * 0.76);
-    bg.addColorStop(0, cssColor(config.palette[0] ?? "var(--color-primary)", "#7c3aed"));
-    bg.addColorStop(0.42, cssColor(config.palette[1] ?? "var(--color-secondary)", "#0891b2"));
-    bg.addColorStop(1, cssColor("var(--color-base-300)", "#0f172a"));
+    addColorStop(bg, 0, cssColor(config.palette[0] ?? "var(--color-primary)", "#7c3aed"), "#7c3aed");
+    addColorStop(bg, 0.42, cssColor(config.palette[1] ?? "var(--color-secondary)", "#0891b2"), "#0891b2");
+    addColorStop(bg, 1, cssColor("var(--color-base-300)", "#0f172a"), "#0f172a");
     ctx.globalAlpha = 0.28;
     ctx.fillStyle = bg;
     ctx.fillRect(0, 0, width, height);

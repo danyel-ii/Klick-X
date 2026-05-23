@@ -1,4 +1,4 @@
-const CACHE_VERSION = "study-blocks-v1";
+const CACHE_VERSION = "study-blocks-v2";
 const APP_SHELL = ["/login", "/manifest.webmanifest", "/icon.svg", "/icons/icon-192.png", "/icons/icon-512.png", "/icons/maskable-512.png"];
 
 self.addEventListener("install", (event) => {
@@ -37,7 +37,7 @@ self.addEventListener("fetch", (event) => {
     caches.match(request).then((cached) => {
       if (cached) return cached;
       return fetch(request).then((response) => {
-        if (response.ok && ["style", "script", "image", "font"].includes(request.destination)) {
+        if (response.ok && ["image", "font"].includes(request.destination)) {
           const clone = response.clone();
           caches.open(CACHE_VERSION).then((cache) => cache.put(request, clone));
         }
