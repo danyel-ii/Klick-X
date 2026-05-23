@@ -2,7 +2,7 @@ import type { Locale } from "./types";
 
 export const dictionaries = {
   en: {
-    nav: { today: "Today", calendar: "Calendar", stats: "Stats", settings: "Settings" },
+    nav: { home: "Home", today: "Today", calendar: "Calendar", stats: "Stats", settings: "Settings" },
     actions: {
       add: "Add",
       back: "Back",
@@ -53,6 +53,23 @@ export const dictionaries = {
       submit: "Sign in",
       submitting: "Signing in...",
       invalid: "User ID or password is incorrect.",
+    },
+    home: {
+      title: "Home",
+      subtitle: "A focused command center for today's study work and upcoming commitments.",
+      openToday: "Open today",
+      todayProgress: "Today",
+      studiedToday: "Studied",
+      openBlocks: "Open blocks",
+      priority: "Next priority",
+      priorityHint: "Work from the top of the queue.",
+      workBlock: "Work block",
+      emptyPriority: "No open block is ready. Schedule a day or create today's board.",
+      upcoming: "Upcoming schedules",
+      queue: "Work queue",
+      noUpcoming: "No upcoming schedules.",
+      emptyQueue: "No open planned blocks.",
+      unknownSubject: "Unknown subject",
     },
     today: {
       title: "Today",
@@ -171,7 +188,7 @@ export const dictionaries = {
     },
   },
   de: {
-    nav: { today: "Heute", calendar: "Kalender", stats: "Statistik", settings: "Einstellungen" },
+    nav: { home: "Start", today: "Heute", calendar: "Kalender", stats: "Statistik", settings: "Einstellungen" },
     actions: {
       add: "Hinzufügen",
       back: "Zurück",
@@ -222,6 +239,23 @@ export const dictionaries = {
       submit: "Anmelden",
       submitting: "Anmeldung...",
       invalid: "Benutzer-ID oder Passwort ist falsch.",
+    },
+    home: {
+      title: "Start",
+      subtitle: "Eine fokussierte Kommandozentrale für heutige Lernarbeit und kommende Pläne.",
+      openToday: "Heute öffnen",
+      todayProgress: "Heute",
+      studiedToday: "Gelernt",
+      openBlocks: "Offene Blöcke",
+      priority: "Nächste Priorität",
+      priorityHint: "Arbeite von oben nach unten durch die Warteschlange.",
+      workBlock: "Block bearbeiten",
+      emptyPriority: "Kein offener Block bereit. Plane einen Tag oder erstelle das heutige Board.",
+      upcoming: "Kommende Pläne",
+      queue: "Arbeitsliste",
+      noUpcoming: "Keine kommenden Pläne.",
+      emptyQueue: "Keine offenen geplanten Blöcke.",
+      unknownSubject: "Unbekanntes Fach",
     },
     today: {
       title: "Heute",

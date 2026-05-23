@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BarChart3, CalendarDays, Settings, TimerReset } from "lucide-react";
+import { BarChart3, CalendarDays, Home, Settings, TimerReset } from "lucide-react";
 import { clsx } from "clsx";
 import { useEffect } from "react";
 import { InstallPrompt } from "@/components/InstallPrompt";
@@ -11,6 +11,7 @@ import { useAppStore } from "@/lib/store";
 import { isDaisyTheme, type DaisyTheme } from "@/lib/themes";
 
 const nav = [
+  { href: "/", key: "home" as const, icon: Home },
   { href: "/today", key: "today" as const, icon: TimerReset },
   { href: "/calendar", key: "calendar" as const, icon: CalendarDays },
   { href: "/stats", key: "stats" as const, icon: BarChart3 },
@@ -81,7 +82,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <nav className="mt-8 space-y-2" aria-label="Primary">
               {nav.map((item) => {
                 const Icon = item.icon;
-                const active = pathname === item.href || (pathname === "/" && item.href === "/today");
+                const active = pathname === item.href;
                 return (
                   <Link
                     key={item.href}
@@ -102,10 +103,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <main className="w-full px-4 pb-28 pt-6 sm:px-6 md:px-8 md:pb-8">{children}</main>
       </div>
       <nav className="liquid-glass fixed inset-x-3 bottom-3 z-20 rounded-[1.75rem] px-2 py-2 md:hidden" aria-label="Primary">
-        <div className="mx-auto grid max-w-md grid-cols-4 gap-1">
+        <div className="mx-auto grid max-w-md grid-cols-5 gap-1">
           {nav.map((item) => {
             const Icon = item.icon;
-            const active = pathname === item.href || (pathname === "/" && item.href === "/today");
+            const active = pathname === item.href;
             return (
               <Link
                 key={item.href}
