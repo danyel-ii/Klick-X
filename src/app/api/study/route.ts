@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
 
 function apiError(error: unknown) {
   const message = error instanceof Error ? error.message : "Database unavailable.";
-  if (message.startsWith("Invalid import payload") || message === "Every planned block needs a subject.") {
+  if (message.startsWith("Invalid import payload") || message === "Every planned block needs a subject." || message === "Subject is required." || message === "Active blocks cannot be deleted.") {
     return NextResponse.json({ error: message }, { status: 400 });
   }
   return NextResponse.json({ error: message }, { status: 503 });
@@ -78,6 +78,12 @@ export async function POST(request: Request) {
         break;
       case "createOrUpdateDayPlan":
         await repo.createOrUpdateDayPlan(payload?.date as string, payload?.plannedBlockCount as number, payload?.assignments as Parameters<typeof repo.createOrUpdateDayPlan>[2]);
+        break;
+      case "addBlockToDay":
+        await repo.addBlockToDay(payload?.date as string, payload?.input as Parameters<typeof repo.addBlockToDay>[1]);
+        break;
+      case "deleteBlock":
+        await repo.deleteBlock(payload?.id as string);
         break;
       case "startBlock":
         await repo.startBlock(payload?.id as string);

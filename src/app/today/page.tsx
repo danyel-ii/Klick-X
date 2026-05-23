@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { CheckCircle2, Circle, Minus, NotebookPen, Play, Plus, SkipForward } from "lucide-react";
+import { CheckCircle2, Circle, Minus, NotebookPen, Play, Plus, SkipForward, Trash2 } from "lucide-react";
 import { OnboardingDeck } from "@/components/OnboardingDeck";
 import { FocusScreensaver } from "@/components/FocusScreensaver";
 import { ActiveBlockPanel } from "@/components/ActiveBlockPanel";
@@ -30,6 +30,8 @@ export default function TodayPage() {
     updateBlockSubject,
     updateBlockTags,
     updateBlockNote,
+    addBlockToDay,
+    deleteBlock,
   } = useAppStore();
   const activeSubjects = subjects.filter((subject) => !subject.archivedAt);
   const activeTags = tags.filter((tag) => !tag.archivedAt);
@@ -57,10 +59,29 @@ export default function TodayPage() {
   const focusTags = tags.filter((tag) => focusBlock?.tagIds.includes(tag.id));
   const activeSubject = subjects.find((subject) => subject.id === activeBlock?.subjectId);
   const activeBlockTags = tags.filter((tag) => activeBlock?.tagIds.includes(tag.id));
+  const defaultSubject = activeSubjects[0];
 
   return (
     <>
-      <PageHeader title={t.today.title} subtitle={t.today.subtitle} />
+      <PageHeader
+        title={t.today.title}
+        subtitle={t.today.subtitle}
+        action={
+          <Button
+            type="button"
+            variant="secondary"
+            disabled={!defaultSubject}
+            onClick={() => {
+              if (!defaultSubject) return;
+              void addBlockToDay(today.date, { subjectId: defaultSubject.id, tagIds: [] });
+            }}
+            className="shrink-0 whitespace-nowrap"
+          >
+            <Plus className="h-4 w-4" aria-hidden />
+            {t.today.addBlock}
+          </Button>
+        }
+      />
       <div className="grid gap-5 lg:grid-cols-[1fr_380px]">
         <section className="grid gap-4 sm:grid-cols-2">
           {todayBlocks.map((block) => (
@@ -78,6 +99,9 @@ export default function TodayPage() {
               onSubject={(subjectId) => void updateBlockSubject(block.id, subjectId)}
               onTags={(tagIds) => void updateBlockTags(block.id, tagIds)}
               onNote={(note) => void updateBlockNote(block.id, note)}
+              onDelete={() => {
+                if (window.confirm(t.today.deleteBlockConfirm)) void deleteBlock(block.id);
+              }}
               onFocus={() => setFocusBlockId(block.id)}
             />
           ))}
@@ -253,6 +277,7 @@ function StudyBlockCard({
   onSubject,
   onTags,
   onNote,
+  onDelete,
   onFocus,
 }: {
   block: StudyBlock;
@@ -267,6 +292,7 @@ function StudyBlockCard({
   onSubject: (id: string) => void;
   onTags: (ids: string[]) => void;
   onNote: (note: string) => void;
+  onDelete: () => void;
   onFocus: () => void;
 }) {
   const { t } = useAppStore();
@@ -399,6 +425,10 @@ function StudyBlockCard({
               <Button variant="ghost" onClick={onSkip} disabled={block.status === "completed" || block.status === "skipped"}>
                 <SkipForward className="h-4 w-4" aria-hidden />
                 {t.actions.skip}
+              </Button>
+              <Button variant="danger" onClick={onDelete} disabled={block.status === "active"}>
+                <Trash2 className="h-4 w-4" aria-hidden />
+                {t.today.deleteBlock}
               </Button>
               <Button variant="secondary" onClick={onFocus} disabled={block.status !== "active"}>
                 {t.today.focusMode}

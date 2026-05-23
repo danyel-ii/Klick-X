@@ -394,6 +394,49 @@ export async function createOrUpdateDayPlan(date: string, plannedBlockCount: num
   }
 }
 
+export async function addBlockToDay(date: string, input: DayAssignment) {
+  if (!input.subjectId) throw new Error("Subject is required.");
+  const db = await readySql();
+  const dayRows = await db`SELECT data FROM study_days WHERE date = ${date} LIMIT 1`;
+  const day = dayRows[0] ? dataOf<StudyDay>(dayRows[0] as { data: StudyDay | string }) : null;
+  if (!day) throw new Error("Study day not found.");
+  const dayBlocks = await listBlocksForDate(date);
+  const now = nowIso();
+  await putDay({ ...day, plannedBlockCount: dayBlocks.length + 1, updatedAt: now });
+  await putBlock({
+    id: id("block"),
+    dayId: day.id,
+    date,
+    index: dayBlocks.length,
+    subjectId: input.subjectId,
+    tagIds: input.tagIds,
+    status: "planned",
+    plannedMinutes: 30,
+    elapsedSeconds: 0,
+    startedAt: null,
+    completedAt: null,
+    note: "",
+    createdAt: now,
+    updatedAt: now,
+  });
+}
+
+export async function deleteBlock(blockId: string) {
+  const db = await readySql();
+  const block = await getBlock(blockId);
+  if (!block) return;
+  if (block.status === "active") throw new Error("Active blocks cannot be deleted.");
+  const dayRows = await db`SELECT data FROM study_days WHERE id = ${block.dayId} LIMIT 1`;
+  const day = dayRows[0] ? dataOf<StudyDay>(dayRows[0] as { data: StudyDay | string }) : null;
+  await db`DELETE FROM study_blocks WHERE id = ${blockId}`;
+  const remainingBlocks = await listBlocksForDate(block.date);
+  const now = nowIso();
+  for (const [index, item] of remainingBlocks.entries()) {
+    if (item.index !== index) await putBlock({ ...item, index, updatedAt: now });
+  }
+  if (day) await putDay({ ...day, plannedBlockCount: remainingBlocks.length, updatedAt: now });
+}
+
 async function listAllBlocks() {
   const db = await readySql();
   const rows = await db`SELECT data FROM study_blocks ORDER BY date, (data->>'index')::int`;

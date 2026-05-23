@@ -247,6 +247,47 @@ export async function createOrUpdateDayPlan(date: string, plannedBlockCount: num
   });
 }
 
+export async function addBlockToDay(date: string, input: DayAssignment) {
+  if (!input.subjectId) throw new Error("Subject is required.");
+  const now = nowIso();
+  await db.transaction("rw", db.studyDays, db.studyBlocks, async () => {
+    const day = await db.studyDays.where("date").equals(date).first();
+    if (!day) throw new Error("Study day not found.");
+    const dayBlocks = await db.studyBlocks.where("date").equals(date).sortBy("index");
+    await db.studyDays.put({ ...day, plannedBlockCount: dayBlocks.length + 1, updatedAt: now });
+    await db.studyBlocks.add({
+      id: id("block"),
+      dayId: day.id,
+      date,
+      index: dayBlocks.length,
+      subjectId: input.subjectId,
+      tagIds: input.tagIds,
+      status: "planned",
+      plannedMinutes: 30,
+      elapsedSeconds: 0,
+      startedAt: null,
+      completedAt: null,
+      note: "",
+      createdAt: now,
+      updatedAt: now,
+    });
+  });
+}
+
+export async function deleteBlock(blockId: string) {
+  const now = nowIso();
+  await db.transaction("rw", db.studyDays, db.studyBlocks, async () => {
+    const block = await db.studyBlocks.get(blockId);
+    if (!block) return;
+    if (block.status === "active") throw new Error("Active blocks cannot be deleted.");
+    await db.studyBlocks.delete(blockId);
+    const remainingBlocks = await db.studyBlocks.where("date").equals(block.date).sortBy("index");
+    await Promise.all(remainingBlocks.map((item, index) => db.studyBlocks.update(item.id, { index, updatedAt: now })));
+    const day = await db.studyDays.get(block.dayId);
+    if (day) await db.studyDays.put({ ...day, plannedBlockCount: remainingBlocks.length, updatedAt: now });
+  });
+}
+
 async function pauseActiveBlocks(exceptId?: string) {
   const activeBlocks = await db.studyBlocks.where("status").equals("active").toArray();
   const now = new Date();

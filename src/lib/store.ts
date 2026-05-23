@@ -49,6 +49,8 @@ type AppState = {
   restoreTag: (id: string) => Promise<void>;
   deleteTag: (id: string, force?: boolean) => Promise<void>;
   createOrUpdateDayPlan: (date: string, plannedBlockCount: number, assignments: DayAssignment[]) => Promise<void>;
+  addBlockToDay: (date: string, input: DayAssignment) => Promise<void>;
+  deleteBlock: (id: string) => Promise<void>;
   startBlock: (id: string) => Promise<void>;
   pauseBlock: (id: string) => Promise<void>;
   completeBlock: (id: string) => Promise<void>;
@@ -301,6 +303,24 @@ export const useAppStore = create<AppState>((set, get) => ({
     } catch (error) {
       assertLocalFallbackAllowed(error);
       await data.createOrUpdateDayPlan(date, plannedBlockCount, assignments);
+      await get().refresh();
+    }
+  },
+  addBlockToDay: async (date, input) => {
+    try {
+      set(stateFromSnapshot(await remoteMutation("addBlockToDay", { date, input })));
+    } catch (error) {
+      assertLocalFallbackAllowed(error);
+      await data.addBlockToDay(date, input);
+      await get().refresh();
+    }
+  },
+  deleteBlock: async (id) => {
+    try {
+      set(stateFromSnapshot(await remoteMutation("deleteBlock", { id })));
+    } catch (error) {
+      assertLocalFallbackAllowed(error);
+      await data.deleteBlock(id);
       await get().refresh();
     }
   },
