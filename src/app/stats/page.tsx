@@ -34,13 +34,13 @@ export default function StatsPage() {
       <SurfaceCard className="mb-5">
         <h2 className="text-lg font-bold">{t.stats.filters}</h2>
         <div className="mt-4 grid gap-3 sm:grid-cols-4">
-          <select value={range} onChange={(event) => setRange(event.target.value as StatsRange)} className="min-h-10 rounded-lg border border-[var(--app-border)] bg-[var(--surface)] px-3">
+          <select value={range} onChange={(event) => setRange(event.target.value as StatsRange)} className="min-h-11 rounded-2xl border border-[var(--app-border)] bg-[var(--glass)] px-4 shadow-inner shadow-slate-950/5">
             <option value="7d">{t.stats.range7}</option>
             <option value="30d">{t.stats.range30}</option>
             <option value="90d">{t.stats.range90}</option>
             <option value="all">{t.stats.allTime}</option>
           </select>
-          <select value={subjectId} onChange={(event) => setSubjectId(event.target.value)} className="min-h-10 rounded-lg border border-[var(--app-border)] bg-[var(--surface)] px-3">
+          <select value={subjectId} onChange={(event) => setSubjectId(event.target.value)} className="min-h-11 rounded-2xl border border-[var(--app-border)] bg-[var(--glass)] px-4 shadow-inner shadow-slate-950/5">
             <option value="">{t.stats.allSubjects}</option>
             {subjects.map((subject) => (
               <option key={subject.id} value={subject.id}>
@@ -48,7 +48,7 @@ export default function StatsPage() {
               </option>
             ))}
           </select>
-          <select value={tagId} onChange={(event) => setTagId(event.target.value)} className="min-h-10 rounded-lg border border-[var(--app-border)] bg-[var(--surface)] px-3">
+          <select value={tagId} onChange={(event) => setTagId(event.target.value)} className="min-h-11 rounded-2xl border border-[var(--app-border)] bg-[var(--glass)] px-4 shadow-inner shadow-slate-950/5">
             <option value="">{t.stats.allTags}</option>
             {tags.map((tag) => (
               <option key={tag.id} value={tag.id}>
@@ -86,7 +86,7 @@ export default function StatsPage() {
                   <span
                     key={day.date}
                     title={`${format(new Date(`${day.date}T00:00:00`), "MMM d")}: ${formatMinutes(day.seconds)}`}
-                    className="aspect-square rounded-sm border border-[var(--app-border)]"
+                    className="aspect-square rounded-md border border-[var(--app-border)] shadow-sm shadow-slate-950/5"
                     style={{ backgroundColor: intensity ? `color-mix(in srgb, var(--accent) ${20 + intensity * 65}%, var(--surface))` : "var(--surface)" }}
                   />
                 );
@@ -98,7 +98,7 @@ export default function StatsPage() {
             <div className="mt-4 grid gap-3">
               {stats.notes.length ? (
                 stats.notes.map((note) => (
-                  <article key={note.block.id} className="rounded-lg border border-[var(--app-border)] bg-[var(--surface)] p-3">
+                  <article key={note.block.id} className="liquid-glass rounded-2xl p-3">
                     <div className="flex flex-wrap items-center gap-2 text-sm text-[var(--muted)]">
                       <span>{note.block.date}</span>
                       <span>{note.subject?.name}</span>

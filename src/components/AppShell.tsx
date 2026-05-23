@@ -61,7 +61,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     return (
       <>
         <ServiceWorkerRegistration />
-        <main className="grid min-h-screen place-items-center bg-[var(--background)] text-[var(--muted)]">Study Blocks</main>
+        <main className="grid min-h-screen place-items-center bg-[var(--background)] text-[var(--muted)]">
+          <div className="liquid-glass rounded-full px-5 py-3 font-semibold">Study Blocks</div>
+        </main>
         <InstallPrompt />
       </>
     );
@@ -71,33 +73,35 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     <div className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">
       <ServiceWorkerRegistration />
       <div className="mx-auto flex min-h-screen w-full max-w-7xl">
-        <aside className="sticky top-0 hidden h-screen w-64 shrink-0 border-r border-[var(--app-border)] bg-[var(--background)]/80 p-5 backdrop-blur md:block">
-          <Link href="/today" className="block rounded-xl px-3 py-2 text-lg font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]">
-            Study Blocks
-          </Link>
-          <nav className="mt-8 space-y-2" aria-label="Primary">
-            {nav.map((item) => {
-              const Icon = item.icon;
-              const active = pathname === item.href || (pathname === "/" && item.href === "/today");
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className={clsx(
-                    "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]",
-                    active ? "bg-[var(--card)] text-[var(--foreground)] shadow-sm shadow-slate-950/5" : "text-[var(--muted)] hover:bg-[var(--surface)] hover:text-[var(--foreground)]",
-                  )}
-                >
-                  <Icon className="h-4 w-4" aria-hidden />
-                  {t.nav[item.key]}
-                </Link>
-              );
-            })}
-          </nav>
+        <aside className="sticky top-0 hidden h-screen w-64 shrink-0 p-5 md:block">
+          <div className="liquid-glass flex h-full flex-col rounded-[2rem] p-4">
+            <Link href="/today" className="block rounded-full px-4 py-3 text-lg font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]">
+              Study Blocks
+            </Link>
+            <nav className="mt-8 space-y-2" aria-label="Primary">
+              {nav.map((item) => {
+                const Icon = item.icon;
+                const active = pathname === item.href || (pathname === "/" && item.href === "/today");
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    className={clsx(
+                      "soft-shimmer flex items-center gap-3 rounded-full px-4 py-3 text-sm font-semibold transition duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]",
+                      active ? "bg-[var(--accent)] text-[var(--color-primary-content)] shadow-[0_12px_28px_color-mix(in_srgb,var(--accent)_22%,transparent)]" : "text-[var(--muted)] hover:bg-[var(--glass-strong)] hover:text-[var(--foreground)]",
+                    )}
+                  >
+                    <Icon className="h-4 w-4" aria-hidden />
+                    {t.nav[item.key]}
+                  </Link>
+                );
+              })}
+            </nav>
+          </div>
         </aside>
-        <main className="w-full px-4 pb-24 pt-6 sm:px-6 md:px-8 md:pb-8">{children}</main>
+        <main className="w-full px-4 pb-28 pt-6 sm:px-6 md:px-8 md:pb-8">{children}</main>
       </div>
-      <nav className="fixed inset-x-0 bottom-0 z-20 border-t border-[var(--app-border)] bg-[var(--card)]/95 px-2 py-2 shadow-[0_-12px_30px_rgba(15,23,42,0.08)] backdrop-blur md:hidden" aria-label="Primary">
+      <nav className="liquid-glass fixed inset-x-3 bottom-3 z-20 rounded-[1.75rem] px-2 py-2 md:hidden" aria-label="Primary">
         <div className="mx-auto grid max-w-md grid-cols-4 gap-1">
           {nav.map((item) => {
             const Icon = item.icon;
@@ -107,8 +111,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 key={item.href}
                 href={item.href}
                 className={clsx(
-                  "flex flex-col items-center gap-1 rounded-lg px-2 py-2 text-xs font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]",
-                  active ? "bg-[var(--surface)] text-[var(--foreground)]" : "text-[var(--muted)]",
+                  "flex flex-col items-center gap-1 rounded-2xl px-2 py-2 text-xs font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]",
+                  active ? "bg-[var(--accent)] text-[var(--color-primary-content)] shadow-sm" : "text-[var(--muted)]",
                 )}
               >
                 <Icon className="h-5 w-5" aria-hidden />

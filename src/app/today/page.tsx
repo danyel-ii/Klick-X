@@ -215,8 +215,8 @@ function DailySetup({ subjects, tags }: { subjects: ReturnType<typeof useAppStor
                   type="button"
                   aria-pressed={selectedSlot === index}
                   onClick={() => setSelectedSlot(index)}
-                  className={`min-h-28 rounded-lg border p-3 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] ${
-                    selectedSlot === index ? "border-[var(--accent)] bg-[var(--surface)]" : "border-dashed border-[var(--app-border)] bg-[var(--background)]/50"
+                  className={`soft-shimmer min-h-28 rounded-[1.5rem] border p-3 text-left shadow-sm shadow-slate-950/5 transition duration-200 hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] ${
+                    selectedSlot === index ? "border-[var(--accent)] bg-[var(--glass-strong)]" : "border-dashed border-[var(--app-border)] bg-[var(--glass)]"
                   }`}
                   style={subject ? { borderColor: subjectColor, boxShadow: selectedSlot === index ? `0 0 0 3px color-mix(in srgb, ${subjectColor} 14%, transparent)` : undefined } : undefined}
                 >
@@ -240,7 +240,7 @@ function DailySetup({ subjects, tags }: { subjects: ReturnType<typeof useAppStor
               );
             })}
           </div>
-          <div className="mt-5 rounded-lg border border-[var(--app-border)] bg-[var(--surface)] p-3">
+          <div className="liquid-glass mt-5 rounded-[1.5rem] p-3">
             <p className="text-sm font-semibold text-[var(--muted)]">{t.today.chooseSubject}</p>
             <div className="mt-3 flex flex-wrap gap-2">
               {subjects.map((subject) => (
@@ -308,20 +308,20 @@ function StudyBlockCard({
   const subjectTextColor = resolveSubjectTextColor(subject?.color);
   const stateClass =
     block.status === "active"
-      ? "border-transparent shadow-lg"
+      ? "border-transparent shadow-[0_24px_60px_color-mix(in_srgb,var(--accent)_12%,transparent)]"
       : block.status === "planned"
-        ? "border-dashed bg-[var(--card)]/70"
+        ? "border-dashed bg-[var(--glass)]"
         : block.status === "paused"
           ? "border-transparent"
           : block.status === "completed"
-            ? "border-[var(--app-border)] bg-[var(--surface)]"
-            : "border-[var(--app-border)] bg-[var(--surface)] opacity-55";
+            ? "border-[var(--app-border)] bg-[var(--glass-strong)]"
+            : "border-[var(--app-border)] bg-[var(--glass)] opacity-55";
   const stateStyle =
     block.status === "active"
       ? {
           backgroundColor: subjectColor,
           color: subjectTextColor,
-          boxShadow: `0 0 0 1px color-mix(in srgb, ${subjectColor} 45%, transparent), 0 18px 50px color-mix(in srgb, ${subjectColor} 28%, transparent)`,
+          boxShadow: `0 0 0 1px color-mix(in srgb, ${subjectColor} 38%, transparent), 0 22px 62px color-mix(in srgb, ${subjectColor} 24%, transparent)`,
         }
       : block.status === "planned"
         ? { borderColor: subjectColor, boxShadow: `inset 4px 0 0 ${subjectColor}` }
@@ -341,12 +341,12 @@ function StudyBlockCard({
       onClick={() => setExpanded((value) => !value)}
       animate={block.status === "completed" && !reduceMotion ? { scale: [1, 1.03, 1] } : undefined}
       transition={{ duration: 0.24 }}
-      className={`relative overflow-hidden rounded-lg border p-4 shadow-sm shadow-slate-950/5 transition focus-within:ring-2 focus-within:ring-[var(--ring)] ${stateClass} ${
+      className={`relative overflow-hidden rounded-[1.75rem] border p-5 shadow-sm shadow-slate-950/5 transition duration-200 hover:-translate-y-0.5 focus-within:ring-2 focus-within:ring-[var(--ring)] ${stateClass} ${
         block.status === "skipped" ? "line-through" : ""
       }`}
       style={stateStyle}
     >
-      {block.status === "active" ? <motion.div className="pointer-events-none absolute inset-0 rounded-lg" animate={reduceMotion ? undefined : { opacity: [0.18, 0.32, 0.18] }} transition={{ duration: 2.4, repeat: Infinity }} style={{ boxShadow: "inset 0 0 0 999px rgba(255,255,255,0.05)" }} /> : null}
+      {block.status === "active" ? <motion.div className="pointer-events-none absolute inset-0 rounded-[1.75rem]" animate={reduceMotion ? undefined : { opacity: [0.12, 0.25, 0.12] }} transition={{ duration: 2.8, repeat: Infinity }} style={{ boxShadow: "inset 0 0 0 999px rgba(255,255,255,0.06)" }} /> : null}
       {block.status === "completed" && subject ? <span className="absolute right-3 top-3 h-3 w-3 rounded-full" style={{ backgroundColor: subjectColor }} /> : null}
       <div className="relative flex items-start justify-between gap-3">
         <div>
@@ -399,7 +399,7 @@ function StudyBlockCard({
               {t.today.notes}
             </label>
             {previousSubjectNote ? (
-              <div className="mt-2 rounded-lg border border-[var(--app-border)] bg-[var(--surface)] p-3 text-sm">
+              <div className="liquid-glass mt-2 rounded-2xl p-3 text-sm">
                 <div className="flex flex-wrap items-center gap-2 text-xs font-semibold uppercase tracking-wide text-[var(--muted)]">
                   <span>{t.today.previousSubjectNote}</span>
                   <span>
@@ -409,7 +409,7 @@ function StudyBlockCard({
                 <p className="mt-2 whitespace-pre-wrap text-[var(--foreground)]">{previousSubjectNote.note}</p>
               </div>
             ) : null}
-            <Textarea value={block.note ?? ""} onChange={(event) => onNote(event.target.value)} placeholder={t.today.notePlaceholder} className="mt-2 w-full bg-[var(--card)]/90" />
+            <Textarea value={block.note ?? ""} onChange={(event) => onNote(event.target.value)} placeholder={t.today.notePlaceholder} className="mt-2 w-full bg-[var(--glass-strong)]" />
             <div className="mt-4 flex flex-wrap gap-2">
               {block.status === "active" ? (
                 <Button onClick={onPause}>{t.actions.pause}</Button>

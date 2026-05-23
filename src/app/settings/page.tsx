@@ -197,14 +197,14 @@ export default function SettingsPage() {
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
             <label className="grid gap-1 text-sm font-semibold">
               {t.settings.language}
-              <select value={settings?.locale ?? "en"} onChange={(event) => void setLocale(event.target.value as Locale)} className="min-h-10 rounded-lg border border-[var(--app-border)] bg-[var(--surface)] px-3">
+              <select value={settings?.locale ?? "en"} onChange={(event) => void setLocale(event.target.value as Locale)} className="min-h-11 rounded-2xl border border-[var(--app-border)] bg-[var(--glass)] px-4 shadow-inner shadow-slate-950/5">
                 <option value="en">English</option>
                 <option value="de">Deutsch</option>
               </select>
             </label>
             <label className="grid gap-1 text-sm font-semibold">
               {t.settings.theme}
-              <select value={settings?.theme ?? "system"} onChange={(event) => void updateSettings({ theme: event.target.value as Theme })} className="min-h-10 rounded-lg border border-[var(--app-border)] bg-[var(--surface)] px-3">
+              <select value={settings?.theme ?? "system"} onChange={(event) => void updateSettings({ theme: event.target.value as Theme })} className="min-h-11 rounded-2xl border border-[var(--app-border)] bg-[var(--glass)] px-4 shadow-inner shadow-slate-950/5">
                 <option value="system">{t.settings.system}</option>
                 {daisyThemes.map((theme) => (
                   <option key={theme} value={theme}>
@@ -215,7 +215,7 @@ export default function SettingsPage() {
             </label>
             <label className="grid gap-1 text-sm font-semibold">
               {t.settings.startOfWeek}
-              <select value={settings?.startOfWeek ?? "monday"} onChange={(event) => void updateSettings({ startOfWeek: event.target.value as StartOfWeek })} className="min-h-10 rounded-lg border border-[var(--app-border)] bg-[var(--surface)] px-3">
+              <select value={settings?.startOfWeek ?? "monday"} onChange={(event) => void updateSettings({ startOfWeek: event.target.value as StartOfWeek })} className="min-h-11 rounded-2xl border border-[var(--app-border)] bg-[var(--glass)] px-4 shadow-inner shadow-slate-950/5">
                 <option value="monday">{t.settings.monday}</option>
                 <option value="sunday">{t.settings.sunday}</option>
               </select>
@@ -300,7 +300,7 @@ function SubjectRow({
   }
 
   return (
-    <div className={`rounded-lg border border-[var(--app-border)] bg-[var(--surface)] p-3 ${archived ? "opacity-75" : ""}`}>
+    <div className={`liquid-glass rounded-2xl p-3 ${archived ? "opacity-75" : ""}`}>
       {editing ? (
         <div className="grid gap-3">
           <Input aria-label={t.settings.name} value={name} onChange={(event) => setName(event.target.value)} />
@@ -366,7 +366,7 @@ function TagRow({
   }
 
   return (
-    <div className={`rounded-lg border border-[var(--app-border)] bg-[var(--surface)] p-3 ${archived ? "opacity-75" : ""}`}>
+    <div className={`liquid-glass rounded-2xl p-3 ${archived ? "opacity-75" : ""}`}>
       {editing ? (
         <div className="grid gap-3">
           <Input aria-label={t.settings.name} value={name} onChange={(event) => setName(event.target.value)} />
@@ -432,7 +432,7 @@ function ColorSelect({
           aria-pressed={resolvedValue === option.value}
           title={option.label}
           onClick={() => onChange(option.value)}
-          className="h-10 w-10 shrink-0 rounded-lg border border-[var(--app-border)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
+          className="soft-shimmer h-10 w-10 shrink-0 rounded-2xl border border-[var(--app-border)] shadow-sm shadow-slate-950/10 transition hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
           style={{ backgroundColor: resolveColor(option.value) }}
         />
       ))}

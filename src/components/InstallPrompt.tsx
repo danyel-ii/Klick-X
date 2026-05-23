@@ -99,13 +99,13 @@ export function InstallPrompt() {
   return (
     <aside
       aria-label={t.install.title}
-      className="fixed inset-x-3 bottom-24 z-30 mx-auto max-w-md rounded-lg border border-[var(--app-border)] bg-[var(--card)] p-4 text-[var(--foreground)] shadow-2xl shadow-slate-950/20 backdrop-blur md:bottom-6"
+      className="liquid-glass fixed inset-x-3 bottom-28 z-30 mx-auto max-w-md rounded-[1.75rem] p-4 text-[var(--foreground)] md:bottom-6"
     >
       <button
         type="button"
         aria-label={t.install.later}
         onClick={handleDismiss}
-        className="absolute right-3 top-3 rounded-lg p-1.5 text-[var(--muted)] transition hover:bg-[var(--surface)] hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
+        className="absolute right-3 top-3 rounded-full p-1.5 text-[var(--muted)] transition hover:bg-[var(--glass-strong)] hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
       >
         <X className="h-4 w-4" aria-hidden />
       </button>

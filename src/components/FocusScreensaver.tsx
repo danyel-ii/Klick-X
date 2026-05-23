@@ -2,6 +2,7 @@
 
 import { motion, useReducedMotion } from "framer-motion";
 import { X } from "lucide-react";
+import { resolveSubjectColor } from "@/lib/colors";
 import { useAppStore } from "@/lib/store";
 import { formatDuration, visibleElapsedSeconds } from "@/lib/timer";
 import type { StudyBlock, Subject, Tag } from "@/lib/types";
@@ -32,7 +33,7 @@ export function FocusScreensaver({
 }) {
   const { t } = useAppStore();
   const reduceMotion = useReducedMotion();
-  const accent = subject?.color ?? "var(--accent)";
+  const accent = resolveSubjectColor(subject?.color);
   const elapsed = visibleElapsedSeconds(block, now);
   return (
     <div className="fixed inset-0 z-40 grid place-items-center overflow-y-auto bg-slate-950 p-4 text-slate-50">
@@ -57,12 +58,12 @@ export function FocusScreensaver({
         animate={reduceMotion ? undefined : { x: [-30, 34, -12, -30], y: [12, -28, 26, 12], scale: [1, 0.92, 1.1, 1] }}
         transition={{ duration: 16, repeat: Infinity, ease: "easeInOut" }}
       />
-      <section className="relative z-10 w-full max-w-2xl rounded-lg border border-white/15 bg-slate-950/50 p-5 text-center shadow-2xl shadow-black/40 backdrop-blur-xl sm:p-8">
+      <section className="relative z-10 w-full max-w-2xl rounded-[2rem] border border-white/15 bg-slate-950/45 p-5 text-center shadow-2xl shadow-black/35 backdrop-blur-2xl sm:p-8">
         <button
           type="button"
           aria-label={t.today.exitFocus}
           onClick={onExit}
-          className="absolute right-4 top-4 rounded-lg p-2 text-slate-300 hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300"
+          className="absolute right-4 top-4 rounded-full p-2 text-slate-300 transition hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300"
         >
           <X className="h-5 w-5" aria-hidden />
         </button>
@@ -77,7 +78,7 @@ export function FocusScreensaver({
           <div className="font-mono text-7xl font-bold tracking-normal sm:text-8xl" style={{ textShadow: `0 0 50px ${accent}` }}>
             {formatDuration(elapsed)}
           </div>
-          <div className="mx-auto mt-6 h-2 max-w-sm overflow-hidden rounded-full bg-white/10">
+          <div className="mx-auto mt-6 h-2 max-w-sm overflow-hidden rounded-full bg-white/10 shadow-inner">
             <div className="h-full rounded-full transition-[width]" style={{ width: `${Math.min(100, (elapsed / (block.plannedMinutes * 60)) * 100)}%`, backgroundColor: accent }} />
           </div>
           <p className="mt-2 text-sm text-slate-400">{block.plannedMinutes}m</p>

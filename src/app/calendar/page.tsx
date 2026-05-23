@@ -77,10 +77,10 @@ export default function CalendarPage() {
                   type="button"
                   aria-label={`${format(day, "PPP")}: ${formatMinutes(summary?.studiedSeconds ?? 0)} ${t.calendar.studied}`}
                   onClick={() => setSelected(key)}
-                  className={`aspect-square rounded-lg border p-1 text-left text-xs transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] ${selected === key ? "border-[var(--accent)]" : "border-[var(--app-border)]"} ${isSameMonth(day, month) ? "opacity-100" : "opacity-40"}`}
+                  className={`soft-shimmer aspect-square rounded-2xl border p-1 text-left text-xs shadow-sm shadow-slate-950/5 transition duration-200 hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] ${selected === key ? "border-[var(--accent)]" : "border-[var(--app-border)]"} ${isSameMonth(day, month) ? "opacity-100" : "opacity-40"}`}
                   style={{ backgroundColor: intensity ? `color-mix(in srgb, var(--accent) ${20 + intensity * 55}%, var(--surface))` : "var(--surface)" }}
                 >
-                  <span className={isToday(day) ? "rounded-full bg-[var(--foreground)] px-1.5 py-0.5 text-[var(--background)]" : ""}>{format(day, "d")}</span>
+                  <span className={isToday(day) ? "rounded-full bg-[var(--accent)] px-1.5 py-0.5 text-[var(--color-primary-content)] shadow-sm" : ""}>{format(day, "d")}</span>
                 </button>
               );
             })}
@@ -101,7 +101,7 @@ export default function CalendarPage() {
               const subject = subjects.find((item) => item.id === block.subjectId);
               const blockTags = tags.filter((tag) => block.tagIds.includes(tag.id));
               return (
-                <div key={block.id} className="rounded-lg border border-[var(--app-border)] bg-[var(--surface)] p-3">
+                <div key={block.id} className="liquid-glass rounded-2xl p-3">
                   <div className="flex justify-between gap-2">
                     <span className="font-semibold">{subject?.name}</span>
                     <span className="font-mono text-sm">{formatMinutes(block.elapsedSeconds)}</span>

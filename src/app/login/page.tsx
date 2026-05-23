@@ -45,25 +45,25 @@ export default function LoginPage() {
 
   return (
     <main className="grid min-h-screen place-items-center bg-[var(--background)] px-4 py-10 text-[var(--foreground)]">
-      <section className="w-full max-w-md rounded-lg border border-[var(--app-border)] bg-[var(--card)] p-5 shadow-2xl shadow-slate-950/15">
+      <section className="liquid-glass w-full max-w-md rounded-[2rem] p-5 shadow-[var(--soft-shadow)] sm:p-6">
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-start gap-3">
-            <div className="grid h-11 w-11 shrink-0 place-items-center rounded-lg bg-[var(--accent)] text-white">
+            <div className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-[var(--accent)] text-[var(--color-primary-content)] shadow-[0_14px_32px_color-mix(in_srgb,var(--accent)_24%,transparent)]">
               <LockKeyhole className="h-5 w-5" aria-hidden />
             </div>
             <div>
-              <h1 className="text-2xl font-bold">{copy.title}</h1>
+              <h1 className="text-2xl font-semibold tracking-normal">{copy.title}</h1>
               <p className="mt-1 text-sm leading-6 text-[var(--muted)]">{copy.subtitle}</p>
             </div>
           </div>
-          <div className="flex rounded-full border border-[var(--app-border)] bg-[var(--surface)] p-1 text-xs font-bold">
+          <div className="flex rounded-full border border-[var(--app-border)] bg-[var(--glass)] p-1 text-xs font-bold shadow-inner shadow-slate-950/5">
             {(["en", "de"] as const).map((item) => (
               <button
                 key={item}
                 type="button"
                 aria-pressed={locale === item}
                 onClick={() => setLocale(item)}
-                className={`rounded-full px-2 py-1 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] ${locale === item ? "bg-[var(--foreground)] text-[var(--background)]" : "text-[var(--muted)]"}`}
+                className={`rounded-full px-2 py-1 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] ${locale === item ? "bg-[var(--accent)] text-[var(--color-primary-content)] shadow-sm" : "text-[var(--muted)]"}`}
               >
                 {item.toUpperCase()}
               </button>
@@ -80,7 +80,7 @@ export default function LoginPage() {
             <Input autoComplete="current-password" type="password" value={password} onChange={(event) => setPassword(event.target.value)} required />
           </label>
           {error ? (
-            <p className="rounded-lg border border-[var(--destructive)]/30 bg-[var(--destructive)]/10 px-3 py-2 text-sm font-semibold text-[var(--destructive)]" aria-live="polite">
+            <p className="rounded-2xl border border-[var(--destructive)]/30 bg-[var(--destructive)]/10 px-3 py-2 text-sm font-semibold text-[var(--destructive)]" aria-live="polite">
               {error}
             </p>
           ) : null}
