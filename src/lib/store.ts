@@ -78,7 +78,7 @@ class RemoteRequestError extends Error {
 }
 
 function fallbackAllowedFor(status: number, message: string) {
-  return status === 503 && message.includes("DATABASE_URL is not configured");
+  return status >= 500 || message.includes("DATABASE_URL is not configured");
 }
 
 async function throwRemoteError(response: Response, fallbackMessage: string): Promise<never> {
@@ -141,6 +141,7 @@ async function remoteStats(filters: StatsFilters) {
 function stateFromSnapshot(snapshot: AppSnapshot) {
   return {
     ...snapshot,
+    dailyFractals: snapshot.dailyFractals ?? [],
     t: dictionaries[snapshot.settings.locale],
     hydrated: true,
   };

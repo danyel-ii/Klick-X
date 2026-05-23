@@ -25,7 +25,7 @@ export default function CalendarPage() {
   const selectedBlocks = allBlocks.filter((block) => block.date === selected).sort((a, b) => a.index - b.index);
   const activeSubjects = subjects.filter((subject) => !subject.archivedAt);
   const activeTags = tags.filter((tag) => !tag.archivedAt);
-  const fractalsByDate = useMemo(() => new Map(dailyFractals.map((fractal) => [fractal.date, fractal])), [dailyFractals]);
+  const fractalsByDate = useMemo(() => new Map((dailyFractals ?? []).map((fractal) => [fractal.date, fractal])), [dailyFractals]);
   const fallbackFractals = useMemo(
     () =>
       calendarSummary
