@@ -86,6 +86,75 @@ describe("normalizeExportPayload", () => {
     expect(normalized.settings?.locale).toBe("en");
   });
 
+  it("preserves bounded daily artwork geometry", () => {
+    const payload = validPayload();
+    payload.dailyFractals = [
+      {
+        id: "fractal_2026-05-22",
+        date: "2026-05-22",
+        seed: "coin-partition-art:streak-1",
+        params: {
+          date: "2026-05-22",
+          dailyPomodoroCount: 1,
+          consecutivePomodoroStreak: 1,
+          overallStudyStreakDays: 1,
+          longestStudyStreakDays: 1,
+          subjectStreaks: { subject_math: 1 },
+          tagStreaks: { tag_focus: 1 },
+          totalMinutesToday: 30,
+          completedBlocksToday: 1,
+          daysSinceLastUse: 0,
+          dominantSubjectId: "subject_math",
+          dominantSubjectColor: "#2563eb",
+          dominantTagIds: ["tag_focus"],
+          dominantTagColors: ["#2563eb"],
+          seed: "coin-partition-art:streak-1",
+        },
+        config: {
+          seed: "coin-partition-art:streak-1",
+          background: [],
+          palette: ["#2563eb"],
+          depth: 3,
+          symmetry: 5,
+          rotation: 0,
+          curl: 0.1,
+          spread: 0.4,
+          branchScale: 0.7,
+          lineWidth: 1,
+          glow: 0.2,
+          rings: 2,
+          branches: [],
+          artwork: {
+            pageWidth: 210,
+            pageHeight: 297,
+            lineCount: 5,
+            hatchSpacing: 3,
+            faces: [
+              {
+                id: 1,
+                polygon: [
+                  { x: 0, y: 0 },
+                  { x: 210, y: 0 },
+                  { x: 210, y: 297 },
+                ],
+                hatchSegments: [{ a: { x: 0, y: 0 }, b: { x: 210, y: 297 } }],
+                inverted: false,
+                color: "#ffffff",
+              },
+            ],
+          },
+        },
+        createdAt: now,
+        updatedAt: now,
+      },
+    ];
+
+    const normalized = normalizeExportPayload(payload);
+
+    expect(normalized.dailyFractals[0]?.config.artwork?.lineCount).toBe(5);
+    expect(normalized.dailyFractals[0]?.config.artwork?.faces[0]?.hatchSegments).toHaveLength(1);
+  });
+
   it("rejects malformed payloads before import", () => {
     expect(() => normalizeExportPayload({ version: 1, subjects: [], tags: [], studyDays: [], studyBlocks: "nope" })).toThrow(
       /Invalid import payload/,

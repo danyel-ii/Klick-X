@@ -1,6 +1,6 @@
 import { resolveSubjectColor, resolveTagColor } from "./colors";
 import { isDaisyTheme } from "./themes";
-import type { AppSettings, ExportPayload, FractalBranchConfig, FractalConfig, FractalParams, Locale, StartOfWeek, StudyBlockStatus } from "./types";
+import type { AppSettings, ArtworkFace, ArtworkPoint, ArtworkSegment, CoinPartitionArtwork, ExportPayload, FractalBranchConfig, FractalConfig, FractalParams, Locale, StartOfWeek, StudyBlockStatus } from "./types";
 
 const maxImportRecords = 5000;
 const maxNameLength = 120;
@@ -222,6 +222,52 @@ function normalizeFractalBranch(value: unknown): FractalBranchConfig {
   };
 }
 
+function normalizeArtworkPoint(value: unknown): ArtworkPoint {
+  const item = record(value, "dailyFractal.config.artwork.point");
+  return {
+    x: numberValue(item.x, "dailyFractal.config.artwork.point.x", -10000, 10000),
+    y: numberValue(item.y, "dailyFractal.config.artwork.point.y", -10000, 10000),
+  };
+}
+
+function normalizeArtworkSegment(value: unknown): ArtworkSegment {
+  const item = record(value, "dailyFractal.config.artwork.segment");
+  return {
+    a: normalizeArtworkPoint(item.a),
+    b: normalizeArtworkPoint(item.b),
+  };
+}
+
+function normalizeArtworkFace(value: unknown): ArtworkFace {
+  const item = record(value, "dailyFractal.config.artwork.face");
+  const polygon = array(item.polygon, "dailyFractal.config.artwork.face.polygon").map(normalizeArtworkPoint);
+  const hatchSegments = array(item.hatchSegments, "dailyFractal.config.artwork.face.hatchSegments").map(normalizeArtworkSegment);
+  if (polygon.length < 3 || polygon.length > 128) fail("dailyFractal.config.artwork.face.polygon");
+  if (hatchSegments.length > 1000) fail("dailyFractal.config.artwork.face.hatchSegments");
+  if (typeof item.inverted !== "boolean") fail("dailyFractal.config.artwork.face.inverted");
+  return {
+    id: integerValue(item.id, "dailyFractal.config.artwork.face.id", 1, 10000),
+    polygon,
+    hatchSegments,
+    inverted: item.inverted,
+    color: stringValue(item.color, "dailyFractal.config.artwork.face.color", maxColorLength, true),
+  };
+}
+
+function normalizeArtwork(value: unknown): CoinPartitionArtwork | undefined {
+  if (value === undefined) return undefined;
+  const item = record(value, "dailyFractal.config.artwork");
+  const faces = array(item.faces, "dailyFractal.config.artwork.faces").map(normalizeArtworkFace);
+  if (faces.length > 4096) fail("dailyFractal.config.artwork.faces");
+  return {
+    pageWidth: numberValue(item.pageWidth, "dailyFractal.config.artwork.pageWidth", 1, 10000),
+    pageHeight: numberValue(item.pageHeight, "dailyFractal.config.artwork.pageHeight", 1, 10000),
+    lineCount: integerValue(item.lineCount, "dailyFractal.config.artwork.lineCount", 0, 256),
+    hatchSpacing: numberValue(item.hatchSpacing, "dailyFractal.config.artwork.hatchSpacing", 0.1, 1000),
+    faces,
+  };
+}
+
 function normalizeFractalConfig(value: unknown): FractalConfig {
   const item = record(value, "dailyFractal.config");
   const branches = array(item.branches, "dailyFractal.config.branches").map(normalizeFractalBranch);
@@ -240,6 +286,7 @@ function normalizeFractalConfig(value: unknown): FractalConfig {
     glow: numberValue(item.glow, "dailyFractal.config.glow", 0, 10),
     rings: integerValue(item.rings, "dailyFractal.config.rings", 0, 64),
     branches,
+    artwork: normalizeArtwork(item.artwork),
   };
 }
 

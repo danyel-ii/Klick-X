@@ -80,6 +80,32 @@ export type FractalBranchConfig = {
   color: string;
 };
 
+export type ArtworkPoint = {
+  x: number;
+  y: number;
+};
+
+export type ArtworkSegment = {
+  a: ArtworkPoint;
+  b: ArtworkPoint;
+};
+
+export type ArtworkFace = {
+  id: number;
+  polygon: ArtworkPoint[];
+  hatchSegments: ArtworkSegment[];
+  inverted: boolean;
+  color: string;
+};
+
+export type CoinPartitionArtwork = {
+  pageWidth: number;
+  pageHeight: number;
+  lineCount: number;
+  hatchSpacing: number;
+  faces: ArtworkFace[];
+};
+
 export type FractalConfig = {
   seed: string;
   background: string[];
@@ -94,6 +120,7 @@ export type FractalConfig = {
   glow: number;
   rings: number;
   branches: FractalBranchConfig[];
+  artwork?: CoinPartitionArtwork;
 };
 
 export type DailyFractal = {

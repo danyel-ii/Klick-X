@@ -30,13 +30,20 @@ export default function CalendarPage() {
     () =>
       calendarSummary
         .filter((summary) => summary.studiedSeconds > 0)
-        .map((summary) => fractalsByDate.get(summary.date) ?? buildDailyFractal({ date: summary.date, blocks: allBlocks, subjects, tags, now: `${summary.date}T23:59:59.000Z` }))
+        .map((summary) => {
+          const existing = fractalsByDate.get(summary.date);
+          return existing?.config.artwork ? existing : buildDailyFractal({ existing, date: summary.date, blocks: allBlocks, subjects, tags, now: `${summary.date}T23:59:59.000Z` });
+        })
         .sort((a, b) => b.date.localeCompare(a.date)),
     [allBlocks, calendarSummary, fractalsByDate, subjects, tags],
   );
+  const persistedSelectedFractal = fractalsByDate.get(selected);
   const selectedFractal =
-    fractalsByDate.get(selected) ??
-    (selectedSummary?.studiedSeconds ? buildDailyFractal({ date: selected, blocks: allBlocks, subjects, tags, now: `${selected}T23:59:59.000Z` }) : null);
+    persistedSelectedFractal?.config.artwork
+      ? persistedSelectedFractal
+      : selectedSummary?.studiedSeconds
+        ? buildDailyFractal({ existing: persistedSelectedFractal, date: selected, blocks: allBlocks, subjects, tags, now: `${selected}T23:59:59.000Z` })
+        : null;
 
   function resizeDraft(nextCount: number) {
     const clamped = Math.min(12, Math.max(1, nextCount));

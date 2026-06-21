@@ -52,7 +52,11 @@ describe("daily fractals", () => {
     expect(params.daysSinceLastUse).toBe(1);
     expect(params.subjectStreaks[subject.id]).toBe(1);
     expect(params.tagStreaks[tag.id]).toBe(1);
+    expect(params.seed).toContain("streak-1");
     expect(second).toEqual(first);
+    expect(first.artwork?.lineCount).toBe(6);
+    expect(first.artwork?.faces.length).toBeGreaterThan(1);
+    expect(first.artwork?.faces[0]?.hatchSegments.length).toBeGreaterThan(0);
   });
 
   it("preserves the daily record identity while evolving the seed", () => {
@@ -70,5 +74,6 @@ describe("daily fractals", () => {
     expect(next.createdAt).toBe(first.createdAt);
     expect(next.updatedAt).toBe("2026-05-22T13:00:00.000Z");
     expect(next.seed).not.toBe(first.seed);
+    expect(next.config.artwork?.lineCount).toBeGreaterThan(first.config.artwork?.lineCount ?? 0);
   });
 });

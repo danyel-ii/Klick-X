@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { CheckCircle2, Circle, Minus, NotebookPen, Play, Plus, SkipForward, Trash2 } from "lucide-react";
+import { CheckCircle2, Circle, Minus, NotebookPen, Play, Plus, SkipForward, Trash2, X } from "lucide-react";
 import { OnboardingDeck } from "@/components/OnboardingDeck";
 import { FocusScreensaver } from "@/components/FocusScreensaver";
 import { ActiveBlockPanel } from "@/components/ActiveBlockPanel";
@@ -37,6 +37,7 @@ export default function TodayPage() {
   const activeTags = tags.filter((tag) => !tag.archivedAt);
   const [now, setNow] = useState(new Date());
   const [focusBlockId, setFocusBlockId] = useState<string | null>(null);
+  const [isAddingBlock, setIsAddingBlock] = useState(false);
 
   useEffect(() => {
     const timer = window.setInterval(() => setNow(new Date()), 1000);
@@ -59,7 +60,6 @@ export default function TodayPage() {
   const focusTags = tags.filter((tag) => focusBlock?.tagIds.includes(tag.id));
   const activeSubject = subjects.find((subject) => subject.id === activeBlock?.subjectId);
   const activeBlockTags = tags.filter((tag) => activeBlock?.tagIds.includes(tag.id));
-  const defaultSubject = activeSubjects[0];
 
   return (
     <>
@@ -70,11 +70,8 @@ export default function TodayPage() {
           <Button
             type="button"
             variant="secondary"
-            disabled={!defaultSubject}
-            onClick={() => {
-              if (!defaultSubject) return;
-              void addBlockToDay(today.date, { subjectId: defaultSubject.id, tagIds: [] });
-            }}
+            disabled={!activeSubjects.length}
+            onClick={() => setIsAddingBlock(true)}
             className="shrink-0 whitespace-nowrap"
           >
             <Plus className="h-4 w-4" aria-hidden />
@@ -83,28 +80,41 @@ export default function TodayPage() {
         }
       />
       <div className="grid gap-5 lg:grid-cols-[1fr_380px]">
-        <section className="grid gap-4 sm:grid-cols-2">
-          {todayBlocks.map((block) => (
-            <StudyBlockCard
-              key={block.id}
-              block={block}
-              now={now}
-              subjects={subjects}
-              tags={tags}
-              allBlocks={allBlocks}
-              onStart={() => void startBlock(block.id)}
-              onPause={() => void pauseBlock(block.id)}
-              onComplete={() => void completeBlock(block.id)}
-              onSkip={() => void skipBlock(block.id)}
-              onSubject={(subjectId) => void updateBlockSubject(block.id, subjectId)}
-              onTags={(tagIds) => void updateBlockTags(block.id, tagIds)}
-              onNote={(note) => void updateBlockNote(block.id, note)}
-              onDelete={() => {
-                if (window.confirm(t.today.deleteBlockConfirm)) void deleteBlock(block.id);
+        <section className="grid gap-4">
+          {isAddingBlock ? (
+            <AddBlockComposer
+              subjects={activeSubjects}
+              tags={activeTags}
+              onCancel={() => setIsAddingBlock(false)}
+              onAdd={async (assignment) => {
+                await addBlockToDay(today.date, assignment);
+                setIsAddingBlock(false);
               }}
-              onFocus={() => setFocusBlockId(block.id)}
             />
-          ))}
+          ) : null}
+          <div className="grid gap-4 sm:grid-cols-2">
+            {todayBlocks.map((block) => (
+              <StudyBlockCard
+                key={block.id}
+                block={block}
+                now={now}
+                subjects={subjects}
+                tags={tags}
+                allBlocks={allBlocks}
+                onStart={() => void startBlock(block.id)}
+                onPause={() => void pauseBlock(block.id)}
+                onComplete={() => void completeBlock(block.id)}
+                onSkip={() => void skipBlock(block.id)}
+                onSubject={(subjectId) => void updateBlockSubject(block.id, subjectId)}
+                onTags={(tagIds) => void updateBlockTags(block.id, tagIds)}
+                onNote={(note) => void updateBlockNote(block.id, note)}
+                onDelete={() => {
+                  if (window.confirm(t.today.deleteBlockConfirm)) void deleteBlock(block.id);
+                }}
+                onFocus={() => setFocusBlockId(block.id)}
+              />
+            ))}
+          </div>
         </section>
         <SurfaceCard className="h-fit">
           <h2 className="text-lg font-bold">{t.today.activeBlock}</h2>
@@ -133,6 +143,96 @@ export default function TodayPage() {
         />
       ) : null}
     </>
+  );
+}
+
+function AddBlockComposer({
+  subjects,
+  tags,
+  onAdd,
+  onCancel,
+}: {
+  subjects: ReturnType<typeof useAppStore.getState>["subjects"];
+  tags: ReturnType<typeof useAppStore.getState>["tags"];
+  onAdd: (assignment: DayAssignment) => Promise<void>;
+  onCancel: () => void;
+}) {
+  const { t } = useAppStore();
+  const [subjectId, setSubjectId] = useState("");
+  const [tagIds, setTagIds] = useState<string[]>([]);
+  const [error, setError] = useState("");
+  const selectedSubject = subjects.find((subject) => subject.id === subjectId);
+  const selectedTags = tags.filter((tag) => tagIds.includes(tag.id));
+
+  async function submit() {
+    if (!subjectId) {
+      setError(t.today.subjectRequired);
+      return;
+    }
+    await onAdd({ subjectId, tagIds });
+  }
+
+  return (
+    <SurfaceCard className="border border-[var(--app-border)]">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h2 className="text-lg font-bold">{t.today.addBlock}</h2>
+          <p className="mt-1 text-sm text-[var(--muted)]">{t.today.chooseSubject}</p>
+        </div>
+        <Button type="button" variant="ghost" onClick={onCancel} aria-label={t.actions.cancel} className="min-h-10 px-3">
+          <X className="h-4 w-4" aria-hidden />
+        </Button>
+      </div>
+      <div className="mt-4 min-h-20 rounded-[1.25rem] border border-dashed border-[var(--app-border)] bg-[var(--glass)] p-3">
+        {selectedSubject ? (
+          <div className="flex flex-wrap items-center gap-2">
+            <SubjectPill subject={selectedSubject} />
+            {selectedTags.map((tag) => (
+              <TagPill key={tag.id} tag={tag} />
+            ))}
+          </div>
+        ) : (
+          <span className="text-sm text-[var(--muted)]">{t.today.chooseSubject}</span>
+        )}
+      </div>
+      <div className="mt-4">
+        <p className="text-sm font-semibold text-[var(--muted)]">{t.today.chooseSubject}</p>
+        <div className="mt-3 flex flex-wrap gap-2">
+          {subjects.map((subject) => (
+            <SubjectPill
+              key={subject.id}
+              subject={subject}
+              selected={subject.id === subjectId}
+              onClick={() => {
+                setSubjectId(subject.id);
+                setError("");
+              }}
+            />
+          ))}
+        </div>
+        <p className="mt-4 text-sm font-semibold text-[var(--muted)]">{t.today.chooseTags}</p>
+        <div className="mt-3 flex flex-wrap gap-2">
+          {tags.map((tag) => (
+            <TagPill
+              key={tag.id}
+              tag={tag}
+              selected={tagIds.includes(tag.id)}
+              onClick={() => setTagIds((current) => (current.includes(tag.id) ? current.filter((id) => id !== tag.id) : [...current, tag.id]))}
+            />
+          ))}
+        </div>
+      </div>
+      {error ? <p className="mt-4 text-sm font-semibold text-[var(--destructive)]">{error}</p> : null}
+      <div className="mt-5 flex flex-wrap gap-2">
+        <Button type="button" onClick={() => void submit()}>
+          <Plus className="h-4 w-4" aria-hidden />
+          {t.actions.add}
+        </Button>
+        <Button type="button" variant="ghost" onClick={onCancel}>
+          {t.actions.cancel}
+        </Button>
+      </div>
+    </SurfaceCard>
   );
 }
 
