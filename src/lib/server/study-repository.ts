@@ -74,6 +74,7 @@ export function defaultSettings(locale: Locale = detectLocale()): AppSettings {
     screensaverEnabled: true,
     screensaverDelaySeconds: 180,
     notificationsEnabled: false,
+    timerBeepEnabled: true,
     createdAt: now,
     updatedAt: now,
   };

@@ -1,5 +1,7 @@
-const CACHE_VERSION = "study-blocks-v2";
+const CACHE_VERSION = "study-blocks-v3";
 const APP_SHELL = ["/login", "/manifest.webmanifest", "/icon.svg", "/icons/icon-192.png", "/icons/icon-512.png", "/icons/maskable-512.png"];
+const DATABASE_NAME = "study-blocks";
+const TIMER_NOTIFICATION_TAG = "study-blocks-active-timer";
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
@@ -46,3 +48,159 @@ self.addEventListener("fetch", (event) => {
     }),
   );
 });
+
+self.addEventListener("message", (event) => {
+  const message = event.data;
+  if (!message || typeof message !== "object") return;
+
+  if (message.type === "STUDY_TIMER_SHOW_NOTIFICATION") {
+    event.waitUntil(showTimerNotification(message.payload));
+  }
+
+  if (message.type === "STUDY_TIMER_CLEAR_NOTIFICATION") {
+    event.waitUntil(clearTimerNotifications());
+  }
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+
+  const blockId = event.notification.data?.blockId;
+  const action = event.action;
+
+  event.waitUntil(
+    (async () => {
+      if (blockId && (action === "pause" || action === "complete")) {
+        await updateBlockFromNotification(blockId, action);
+        await notifyClientsToRefresh();
+        return;
+      }
+
+      await openOrFocusToday();
+    })(),
+  );
+});
+
+async function showTimerNotification(payload) {
+  if (!payload?.blockId || !payload?.title) return;
+
+  const locale = payload.locale === "de" ? "de" : "en";
+  await self.registration.showNotification(payload.title, {
+    body: payload.body,
+    tag: TIMER_NOTIFICATION_TAG,
+    renotify: false,
+    requireInteraction: true,
+    silent: true,
+    badge: "/icons/icon-192.png",
+    icon: "/icons/icon-192.png",
+    data: {
+      blockId: payload.blockId,
+      url: "/today",
+    },
+    actions: [
+      { action: "pause", title: locale === "de" ? "Pausieren" : "Pause" },
+      { action: "complete", title: locale === "de" ? "Abschließen" : "Complete" },
+    ],
+  });
+}
+
+async function clearTimerNotifications() {
+  const notifications = await self.registration.getNotifications({ tag: TIMER_NOTIFICATION_TAG });
+  notifications.forEach((notification) => notification.close());
+}
+
+function openDatabase() {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(DATABASE_NAME);
+    request.onerror = () => reject(request.error);
+    request.onblocked = () => reject(new Error("IndexedDB open was blocked."));
+    request.onsuccess = () => resolve(request.result);
+  });
+}
+
+function getObjectStore(database, storeName, mode) {
+  const transaction = database.transaction(storeName, mode);
+  return {
+    store: transaction.objectStore(storeName),
+    done: new Promise((resolve, reject) => {
+      transaction.oncomplete = () => resolve();
+      transaction.onerror = () => reject(transaction.error);
+      transaction.onabort = () => reject(transaction.error);
+    }),
+  };
+}
+
+function requestToPromise(request) {
+  return new Promise((resolve, reject) => {
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+function secondsSince(startedAt, now) {
+  return Math.max(0, Math.floor((now.getTime() - new Date(startedAt).getTime()) / 1000));
+}
+
+function accumulateElapsed(block, now) {
+  return block.startedAt ? block.elapsedSeconds + secondsSince(block.startedAt, now) : block.elapsedSeconds;
+}
+
+async function updateBlockFromNotification(blockId, action) {
+  const database = await openDatabase();
+  const now = new Date();
+  let updatedLocalBlock = false;
+
+  try {
+    const { store, done } = getObjectStore(database, "studyBlocks", "readwrite");
+    const block = await requestToPromise(store.get(blockId));
+    if (!block) return false;
+
+    const nextBlock = {
+      ...block,
+      status: action === "complete" ? "completed" : "paused",
+      elapsedSeconds: accumulateElapsed(block, now),
+      startedAt: null,
+      completedAt: action === "complete" ? now.toISOString() : block.completedAt ?? null,
+      updatedAt: now.toISOString(),
+    };
+
+    store.put(nextBlock);
+    await done;
+    await clearTimerNotifications();
+    updatedLocalBlock = true;
+    return true;
+  } finally {
+    database.close();
+    if (!updatedLocalBlock) await updateRemoteBlockFromNotification(blockId, action);
+  }
+}
+
+async function updateRemoteBlockFromNotification(blockId, action) {
+  const apiAction = action === "complete" ? "completeBlock" : "pauseBlock";
+  const response = await fetch("/api/study", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action: apiAction, payload: { id: blockId } }),
+  }).catch(() => null);
+
+  if (response?.ok) await clearTimerNotifications();
+}
+
+async function notifyClientsToRefresh() {
+  const clients = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+  clients.forEach((client) => client.postMessage({ type: "STUDY_BLOCKS_REFRESH" }));
+}
+
+async function openOrFocusToday() {
+  const appClients = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+  const todayUrl = new URL("/today", self.location.origin).href;
+  const existing = appClients.find((client) => "focus" in client && new URL(client.url).origin === self.location.origin);
+
+  if (existing) {
+    await existing.focus();
+    existing.postMessage({ type: "STUDY_BLOCKS_REFRESH" });
+    return;
+  }
+
+  if (self.clients.openWindow) await self.clients.openWindow(todayUrl);
+}

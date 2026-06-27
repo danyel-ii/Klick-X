@@ -199,6 +199,7 @@ function normalizeSettings(value: unknown): AppSettings | null {
     screensaverEnabled: booleanValue(item.screensaverEnabled, true),
     screensaverDelaySeconds: integerValue(item.screensaverDelaySeconds, "settings.screensaverDelaySeconds", 30, 3600),
     notificationsEnabled: booleanValue(item.notificationsEnabled, false),
+    timerBeepEnabled: booleanValue(item.timerBeepEnabled, true),
     createdAt: timestampValue(item.createdAt, "settings.createdAt"),
     updatedAt: timestampValue(item.updatedAt, "settings.updatedAt"),
   };

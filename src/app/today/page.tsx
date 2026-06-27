@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { CheckCircle2, Circle, Minus, NotebookPen, Play, Plus, SkipForward, Trash2, X } from "lucide-react";
 import { OnboardingDeck } from "@/components/OnboardingDeck";
@@ -10,8 +10,10 @@ import { DailyFractalCanvas } from "@/components/DailyFractalCanvas";
 import { Button, PageHeader, SubjectPill, SurfaceCard, TagPill, Textarea } from "@/components/ui";
 import { resolveSubjectColor, resolveSubjectTextColor } from "@/lib/colors";
 import { localDateKey } from "@/lib/date";
+import { clearLockScreenTimerNotification, syncLockScreenTimerNotification } from "@/lib/lock-screen-notifications";
 import { findPreviousSubjectNote } from "@/lib/notes";
 import { useAppStore } from "@/lib/store";
+import { playTimerBeep, unlockTimerBeep } from "@/lib/timer-beep";
 import { formatDuration, visibleElapsedSeconds } from "@/lib/timer";
 import type { DayAssignment, StudyBlock } from "@/lib/types";
 
@@ -40,6 +42,8 @@ export default function TodayPage() {
   const [now, setNow] = useState(new Date());
   const [focusBlockId, setFocusBlockId] = useState<string | null>(null);
   const [isAddingBlock, setIsAddingBlock] = useState(false);
+  const lastElapsedByBlockRef = useRef<Record<string, number>>({});
+  const beepedBlockIdsRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     const timer = window.setInterval(() => setNow(new Date()), 1000);
@@ -53,6 +57,43 @@ export default function TodayPage() {
     const timeout = window.setTimeout(() => setFocusBlockId(activeBlock.id), settings.screensaverDelaySeconds * 1000);
     return () => window.clearTimeout(timeout);
   }, [activeBlock, settings?.screensaverDelaySeconds, settings?.screensaverEnabled]);
+
+  useEffect(() => {
+    if (!activeBlock || !(settings?.timerBeepEnabled ?? true)) return;
+
+    const elapsed = visibleElapsedSeconds(activeBlock, now);
+    const target = activeBlock.plannedMinutes * 60;
+    const previous = lastElapsedByBlockRef.current[activeBlock.id] ?? activeBlock.elapsedSeconds;
+    lastElapsedByBlockRef.current[activeBlock.id] = elapsed;
+
+    if (target <= 0 || beepedBlockIdsRef.current.has(activeBlock.id)) return;
+    if (previous < target && elapsed >= target) {
+      beepedBlockIdsRef.current.add(activeBlock.id);
+      void playTimerBeep();
+    }
+  }, [activeBlock, now, settings?.timerBeepEnabled]);
+
+  useEffect(() => {
+    if (!settings?.notificationsEnabled || !activeBlock) {
+      void clearLockScreenTimerNotification();
+      return;
+    }
+
+    const subject = subjects.find((item) => item.id === activeBlock.subjectId);
+    const blockTags = tags.filter((tag) => activeBlock.tagIds.includes(tag.id));
+    const sync = () => {
+      void syncLockScreenTimerNotification({
+        block: activeBlock,
+        subject,
+        tags: blockTags,
+        locale: settings.locale,
+      });
+    };
+
+    sync();
+    const interval = window.setInterval(sync, 30_000);
+    return () => window.clearInterval(interval);
+  }, [activeBlock, settings?.locale, settings?.notificationsEnabled, subjects, tags]);
 
   if (!settings?.onboardingCompletedAt) return <OnboardingDeck />;
   if (!today) return <DailySetup subjects={activeSubjects} tags={activeTags} />;
@@ -104,7 +145,10 @@ export default function TodayPage() {
                 subjects={subjects}
                 tags={tags}
                 allBlocks={allBlocks}
-                onStart={() => void startBlock(block.id)}
+                onStart={() => {
+                  void unlockTimerBeep();
+                  void startBlock(block.id);
+                }}
                 onPause={() => void pauseBlock(block.id)}
                 onComplete={() => void completeBlock(block.id)}
                 onSkip={() => void skipBlock(block.id)}
@@ -150,7 +194,10 @@ export default function TodayPage() {
           note={focusBlock.note ?? ""}
           setNote={(note) => void updateBlockNote(focusBlock.id, note)}
           onPause={() => void pauseBlock(focusBlock.id)}
-          onResume={() => void startBlock(focusBlock.id)}
+          onResume={() => {
+            void unlockTimerBeep();
+            void startBlock(focusBlock.id);
+          }}
           onComplete={() => {
             void completeBlock(focusBlock.id);
             setFocusBlockId(null);

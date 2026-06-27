@@ -1,9 +1,10 @@
 "use client";
 
 import { ChangeEvent, useRef, useState } from "react";
-import { ArchiveRestore, Download, LogOut, Pencil, RotateCcw, Trash2, Upload, X } from "lucide-react";
+import { ArchiveRestore, BellRing, Download, LogOut, Pencil, RotateCcw, Trash2, Upload, X } from "lucide-react";
 import { Button, Input, PageHeader, SurfaceCard, TagPill, SubjectPill } from "@/components/ui";
 import { resolveSubjectColor, resolveTagColor, subjectColorOptions, tagThemeColorOptions, tagThemeColorValues } from "@/lib/colors";
+import { requestLockScreenNotificationPermission, supportsLockScreenTimerNotifications } from "@/lib/lock-screen-notifications";
 import { useAppStore } from "@/lib/store";
 import { daisyThemes, formatThemeName } from "@/lib/themes";
 import type { ExportPayload, Locale, StartOfWeek, Subject, Tag, Theme } from "@/lib/types";
@@ -36,6 +37,7 @@ export default function SettingsPage() {
   const [tagColor, setTagColor] = useState<string>(tagThemeColorValues[0]);
   const [resetText, setResetText] = useState("");
   const [importError, setImportError] = useState("");
+  const [notificationError, setNotificationError] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
   const activeSubjects = subjects.filter((subject) => !subject.archivedAt);
   const activeTags = tags.filter((tag) => !tag.archivedAt);
@@ -70,6 +72,27 @@ export default function SettingsPage() {
   async function handleSignOut() {
     await fetch("/api/auth/logout", { method: "POST" });
     window.location.assign("/login");
+  }
+
+  async function handleLockScreenControlsChange(enabled: boolean) {
+    setNotificationError("");
+    if (!enabled) {
+      await updateSettings({ notificationsEnabled: false });
+      return;
+    }
+
+    if (!supportsLockScreenTimerNotifications()) {
+      setNotificationError(t.settings.lockScreenTimerControlsUnsupported);
+      return;
+    }
+
+    const granted = await requestLockScreenNotificationPermission();
+    if (!granted) {
+      setNotificationError(t.settings.notificationPermissionDenied);
+      return;
+    }
+
+    await updateSettings({ notificationsEnabled: true });
   }
 
   return (
@@ -228,6 +251,36 @@ export default function SettingsPage() {
               {t.settings.delay}
               <Input type="number" min={30} value={settings?.screensaverDelaySeconds ?? 180} onChange={(event) => void updateSettings({ screensaverDelaySeconds: Number(event.target.value) })} />
             </label>
+            <label className="flex items-start gap-3 text-sm font-semibold sm:col-span-2">
+              <input
+                type="checkbox"
+                className="mt-1"
+                checked={settings?.timerBeepEnabled ?? true}
+                onChange={(event) => void updateSettings({ timerBeepEnabled: event.target.checked })}
+              />
+              <span>
+                <span>{t.settings.timerBeep}</span>
+                <span className="mt-1 block text-xs leading-5 font-normal text-[var(--muted)]">{t.settings.timerBeepHint}</span>
+              </span>
+            </label>
+            <div className="sm:col-span-2">
+              <label className="flex items-start gap-3 text-sm font-semibold">
+                <input
+                  type="checkbox"
+                  className="mt-1"
+                  checked={settings?.notificationsEnabled ?? false}
+                  onChange={(event) => void handleLockScreenControlsChange(event.target.checked)}
+                />
+                <span>
+                  <span className="flex items-center gap-2">
+                    <BellRing className="h-4 w-4" aria-hidden />
+                    {t.settings.lockScreenTimerControls}
+                  </span>
+                  <span className="mt-1 block text-xs leading-5 font-normal text-[var(--muted)]">{t.settings.lockScreenTimerControlsHint}</span>
+                </span>
+              </label>
+              {notificationError ? <p className="mt-2 text-sm font-semibold text-[var(--destructive)]">{notificationError}</p> : null}
+            </div>
           </div>
           <div className="mt-5 flex flex-wrap gap-2">
             <Button variant="secondary" onClick={() => void resetOnboarding()}>

@@ -165,6 +165,7 @@ export type AppSettings = {
   screensaverEnabled: boolean;
   screensaverDelaySeconds: number;
   notificationsEnabled?: boolean;
+  timerBeepEnabled?: boolean;
   createdAt: string;
   updatedAt: string;
 };
