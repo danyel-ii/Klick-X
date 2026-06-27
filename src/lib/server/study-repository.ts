@@ -503,7 +503,6 @@ export async function startBlock(blockId: string) {
   if (!block) return;
   const now = nowIso();
   await putBlock({ ...block, status: "active", startedAt: now, updatedAt: now });
-  await upsertDailyFractal(block.date, now);
 }
 
 export async function pauseBlock(blockId: string) {
@@ -528,12 +527,6 @@ export async function completeBlock(blockId: string) {
   await upsertDailyFractal(block.date, now.toISOString());
 }
 
-async function getDailyFractal(date: string) {
-  const db = await readySql();
-  const rows = await db`SELECT data FROM daily_fractals WHERE date = ${date} LIMIT 1`;
-  return rows[0] ? dataOf<DailyFractal>(rows[0] as { data: DailyFractal | string }) : null;
-}
-
 async function listDailyFractals() {
   const db = await readySql();
   const rows = await db`SELECT data FROM daily_fractals ORDER BY date`;
@@ -541,8 +534,16 @@ async function listDailyFractals() {
 }
 
 async function upsertDailyFractal(date: string, now: string) {
-  const [existing, blocks, subjects, tags] = await Promise.all([getDailyFractal(date), listAllBlocks(), listSubjects(), listTags()]);
-  await putDailyFractal(buildDailyFractal({ existing, date, blocks, subjects, tags, now }));
+  const [fractals, blocks, subjects, tags] = await Promise.all([listDailyFractals(), listAllBlocks(), listSubjects(), listTags()]);
+  const existing = fractals.filter((fractal) => fractal.status === "active").sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0] ?? null;
+  await putDailyFractal(buildDailyFractal({ existing, date: existing?.startDate ?? date, asOfDate: date, blocks, subjects, tags, now }));
+}
+
+async function ensureDailyFractalProgress(asOfDate = localDateKey()) {
+  const [fractals, blocks, subjects, tags] = await Promise.all([listDailyFractals(), listAllBlocks(), listSubjects(), listTags()]);
+  const existing = fractals.filter((fractal) => fractal.status === "active").sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
+  if (!existing) return;
+  await putDailyFractal(buildDailyFractal({ existing, date: existing.startDate ?? existing.date, asOfDate, blocks, subjects, tags, now: nowIso() }));
 }
 
 export async function skipBlock(blockId: string) {
@@ -627,6 +628,7 @@ export async function getSnapshot(): Promise<AppSnapshot> {
   const settings = await getSettings();
   await seedDefaultSubjectsIfEmpty(settings.locale);
   await seedDefaultTagsIfEmpty(settings.locale);
+  await ensureDailyFractalProgress(localDateKey());
   const [subjects, tags, today, calendarSummary, allDays, allBlocks, dailyFractals] = await Promise.all([
     listSubjects(),
     listTags(),

@@ -1,6 +1,6 @@
 import { resolveSubjectColor, resolveTagColor } from "./colors";
 import { isDaisyTheme } from "./themes";
-import type { AppSettings, ArtworkFace, ArtworkPoint, ArtworkSegment, CoinPartitionArtwork, ExportPayload, FractalBranchConfig, FractalConfig, FractalParams, Locale, StartOfWeek, StudyBlockStatus } from "./types";
+import type { AppSettings, ArtworkFace, ArtworkLifecycleStatus, ArtworkPoint, ArtworkSegment, ArtworkStats, CoinPartitionArtwork, ExportPayload, FractalBranchConfig, FractalConfig, FractalParams, Locale, StartOfWeek, StudyBlockStatus } from "./types";
 
 const maxImportRecords = 5000;
 const maxNameLength = 120;
@@ -10,6 +10,7 @@ const maxIdLength = 160;
 const maxColorLength = 180;
 const datePattern = /^\d{4}-\d{2}-\d{2}$/;
 const blockStatuses = new Set<StudyBlockStatus>(["planned", "active", "paused", "completed", "skipped"]);
+const artworkStatuses = new Set<ArtworkLifecycleStatus>(["active", "completed"]);
 const locales = new Set<Locale>(["en", "de"]);
 const startOfWeeks = new Set<StartOfWeek>(["monday", "sunday"]);
 
@@ -161,6 +162,29 @@ function normalizeBlock(value: unknown) {
   };
 }
 
+function normalizeArtworkStatus(value: unknown) {
+  if (value === undefined) return undefined;
+  if (typeof value === "string" && artworkStatuses.has(value as ArtworkLifecycleStatus)) return value as ArtworkLifecycleStatus;
+  fail("dailyFractal.status");
+}
+
+function normalizeArtworkStats(value: unknown): ArtworkStats | undefined {
+  if (value === undefined) return undefined;
+  const item = record(value, "dailyFractal.stats");
+  return {
+    startDate: dateValue(item.startDate, "dailyFractal.stats.startDate"),
+    endDate: nullableString(item.endDate, "dailyFractal.stats.endDate", 80),
+    calendarDays: integerValue(item.calendarDays, "dailyFractal.stats.calendarDays", 0, 10000),
+    activeDays: integerValue(item.activeDays, "dailyFractal.stats.activeDays", 0, 10000),
+    completedBlocks: integerValue(item.completedBlocks, "dailyFractal.stats.completedBlocks", 0, 10000),
+    totalSeconds: integerValue(item.totalSeconds, "dailyFractal.stats.totalSeconds", 0, 60 * 60 * 24 * 365 * 5),
+    averageBlocksPerActiveDay: numberValue(item.averageBlocksPerActiveDay, "dailyFractal.stats.averageBlocksPerActiveDay", 0, 10000),
+    averageSecondsPerActiveDay: numberValue(item.averageSecondsPerActiveDay, "dailyFractal.stats.averageSecondsPerActiveDay", 0, 60 * 60 * 24 * 365),
+    subjectIds: optionalStringArray(item.subjectIds, "dailyFractal.stats.subjectIds", maxIdLength),
+    tagIds: optionalStringArray(item.tagIds, "dailyFractal.stats.tagIds", maxIdLength),
+  };
+}
+
 function normalizeSettings(value: unknown): AppSettings | null {
   if (value === null) return null;
   const item = record(value, "settings");
@@ -295,6 +319,12 @@ function normalizeDailyFractal(value: unknown) {
   return {
     id: stringValue(item.id, "dailyFractal.id", maxIdLength),
     date: dateValue(item.date, "dailyFractal.date"),
+    startDate: item.startDate === undefined ? undefined : dateValue(item.startDate, "dailyFractal.startDate"),
+    endDate: nullableString(item.endDate, "dailyFractal.endDate", 80),
+    status: normalizeArtworkStatus(item.status),
+    totalSteps: item.totalSteps === undefined ? undefined : integerValue(item.totalSteps, "dailyFractal.totalSteps", 1, 256),
+    visibleSteps: item.visibleSteps === undefined ? undefined : integerValue(item.visibleSteps, "dailyFractal.visibleSteps", 0, 256),
+    stats: normalizeArtworkStats(item.stats),
     seed: stringValue(item.seed, "dailyFractal.seed", 500),
     params: normalizeFractalParams(item.params),
     config: normalizeFractalConfig(item.config),
@@ -325,7 +355,6 @@ export function normalizeExportPayload(payload: unknown): ExportPayload {
   assertUnique(studyDays.map((day) => day.date), "studyDay.date");
   assertUnique(studyBlocks.map((block) => block.id), "studyBlock.id");
   assertUnique(dailyFractals.map((fractal) => fractal.id), "dailyFractal.id");
-  assertUnique(dailyFractals.map((fractal) => fractal.date), "dailyFractal.date");
 
   return {
     version: 1,

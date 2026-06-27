@@ -6,6 +6,7 @@ import { CheckCircle2, Circle, Minus, NotebookPen, Play, Plus, SkipForward, Tras
 import { OnboardingDeck } from "@/components/OnboardingDeck";
 import { FocusScreensaver } from "@/components/FocusScreensaver";
 import { ActiveBlockPanel } from "@/components/ActiveBlockPanel";
+import { DailyFractalCanvas } from "@/components/DailyFractalCanvas";
 import { Button, PageHeader, SubjectPill, SurfaceCard, TagPill, Textarea } from "@/components/ui";
 import { resolveSubjectColor, resolveSubjectTextColor } from "@/lib/colors";
 import { localDateKey } from "@/lib/date";
@@ -23,6 +24,7 @@ export default function TodayPage() {
     today,
     todayBlocks,
     allBlocks,
+    dailyFractals,
     startBlock,
     pauseBlock,
     completeBlock,
@@ -60,6 +62,7 @@ export default function TodayPage() {
   const focusTags = tags.filter((tag) => focusBlock?.tagIds.includes(tag.id));
   const activeSubject = subjects.find((subject) => subject.id === activeBlock?.subjectId);
   const activeBlockTags = tags.filter((tag) => activeBlock?.tagIds.includes(tag.id));
+  const activeArtwork = dailyFractals.find((fractal) => fractal.status === "active") ?? [...dailyFractals].sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
 
   return (
     <>
@@ -116,14 +119,27 @@ export default function TodayPage() {
             ))}
           </div>
         </section>
-        <SurfaceCard className="h-fit">
-          <h2 className="text-lg font-bold">{t.today.activeBlock}</h2>
-          {activeBlock ? (
-            <ActiveBlockPanel block={activeBlock} now={now} subject={activeSubject} tags={activeBlockTags} />
-          ) : (
-            <p className="mt-3 text-sm text-[var(--muted)]">{todayBlocks.every((block) => block.status === "completed" || block.status === "skipped") ? t.today.allDone : t.today.noPlan}</p>
-          )}
-        </SurfaceCard>
+        <div className="grid h-fit gap-5">
+          {activeArtwork ? (
+            <SurfaceCard>
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <h2 className="text-lg font-bold">{t.calendar.fractalGallery}</h2>
+                <span className="font-mono text-sm text-[var(--muted)]">
+                  {activeArtwork.visibleSteps ?? activeArtwork.totalSteps}/{activeArtwork.totalSteps ?? 24}
+                </span>
+              </div>
+              <DailyFractalCanvas fractal={activeArtwork} label={t.calendar.fractalGallery} />
+            </SurfaceCard>
+          ) : null}
+          <SurfaceCard>
+            <h2 className="text-lg font-bold">{t.today.activeBlock}</h2>
+            {activeBlock ? (
+              <ActiveBlockPanel block={activeBlock} now={now} subject={activeSubject} tags={activeBlockTags} />
+            ) : (
+              <p className="mt-3 text-sm text-[var(--muted)]">{todayBlocks.every((block) => block.status === "completed" || block.status === "skipped") ? t.today.allDone : t.today.noPlan}</p>
+            )}
+          </SurfaceCard>
+        </div>
       </div>
       {focusBlock ? (
         <FocusScreensaver

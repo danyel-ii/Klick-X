@@ -1,14 +1,14 @@
 import { differenceInCalendarDays, format, parseISO } from "date-fns";
 import { calculateStreaks } from "./analytics";
 import { resolveSubjectColor, resolveTagColor } from "./colors";
-import type { ArtworkFace, ArtworkPoint, ArtworkSegment, CoinPartitionArtwork, DailyFractal, FractalConfig, FractalParams, StudyBlock, Subject, Tag } from "./types";
+import type { ArtworkFace, ArtworkPoint, ArtworkSegment, ArtworkStats, CoinPartitionArtwork, DailyFractal, FractalConfig, FractalParams, StudyBlock, Subject, Tag } from "./types";
 
 const fallbackSubjectColor = "var(--color-primary)";
 const fallbackTagColor = "var(--color-secondary)";
 const fallbackPalette = ["var(--color-primary)", "var(--color-secondary)", "var(--color-accent)", "var(--color-info)"];
 const pageWidth = 210;
 const pageHeight = 297;
-const maxArtworkLines = 36;
+export const artworkStepCount = 24;
 const defaultHatchSpacing = 3;
 const geometryEpsilon = 1e-7;
 
@@ -156,8 +156,7 @@ export function buildFractalParams({
 export function generateFractalConfig(params: FractalParams): FractalConfig {
   const random = randomFromSeed(params.seed);
   const palette = [params.dominantSubjectColor, ...params.dominantTagColors, ...fallbackPalette].slice(0, 6);
-  const lineCount = Math.min(maxArtworkLines, Math.max(4, params.overallStudyStreakDays + params.completedBlocksToday + 3));
-  const artwork = generateCoinPartitionArtwork(params.seed, lineCount, defaultHatchSpacing);
+  const artwork = generateCoinPartitionArtwork(params.seed, artworkStepCount, defaultHatchSpacing);
   const complexity = Math.min(9, 3 + params.completedBlocksToday + Math.floor(params.overallStudyStreakDays / 3));
   const gapShift = Math.min(8, params.daysSinceLastUse);
   const symmetry = 5 + ((params.overallStudyStreakDays + gapShift) % 7);
@@ -184,6 +183,89 @@ export function generateFractalConfig(params: FractalParams): FractalConfig {
     })),
     artwork,
   };
+}
+
+function dateRange(startDate: string, endDate: string) {
+  const dates: string[] = [];
+  let cursor = parseISO(startDate);
+  const end = parseISO(endDate);
+  while (cursor <= end) {
+    dates.push(format(cursor, "yyyy-MM-dd"));
+    cursor = new Date(cursor.getTime() + 86_400_000);
+  }
+  return dates;
+}
+
+function completedBlocksByDate(blocks: StudyBlock[]) {
+  const map = new Map<string, StudyBlock[]>();
+  for (const block of blocks) {
+    if (block.status !== "completed") continue;
+    map.set(block.date, [...(map.get(block.date) ?? []), block]);
+  }
+  return map;
+}
+
+function studiedBlocksBetween(blocks: StudyBlock[], startDate: string, endDate: string) {
+  return blocks.filter((block) => block.date >= startDate && block.date <= endDate && studiedSeconds(block) > 0);
+}
+
+function blocksForArtworkCycle(blocks: StudyBlock[], startDate: string, createdAt: string) {
+  return blocks.filter((block) => {
+    if (block.date < startDate) return false;
+    if (block.date > startDate) return true;
+    const blockTimestamp = block.completedAt ?? block.updatedAt;
+    return blockTimestamp >= createdAt;
+  });
+}
+
+function buildArtworkStats(blocks: StudyBlock[], startDate: string, endDate: string | null): ArtworkStats {
+  const effectiveEndDate = endDate ?? startDate;
+  const scopedBlocks = studiedBlocksBetween(blocks, startDate, effectiveEndDate);
+  const completedBlocks = scopedBlocks.filter((block) => block.status === "completed").length;
+  const activeDays = new Set(scopedBlocks.map((block) => block.date));
+  const totalSeconds = scopedBlocks.reduce((sum, block) => sum + studiedSeconds(block), 0);
+  return {
+    startDate,
+    endDate,
+    calendarDays: Math.max(1, differenceInCalendarDays(parseISO(effectiveEndDate), parseISO(startDate)) + 1),
+    activeDays: activeDays.size,
+    completedBlocks,
+    totalSeconds,
+    averageBlocksPerActiveDay: activeDays.size ? completedBlocks / activeDays.size : 0,
+    averageSecondsPerActiveDay: activeDays.size ? totalSeconds / activeDays.size : 0,
+    subjectIds: [...new Set(scopedBlocks.map((block) => block.subjectId))],
+    tagIds: [...new Set(scopedBlocks.flatMap((block) => block.tagIds))],
+  };
+}
+
+export function calculateArtworkProgress({
+  startDate,
+  asOfDate,
+  blocks,
+}: {
+  startDate: string;
+  asOfDate: string;
+  blocks: StudyBlock[];
+}) {
+  const byDate = completedBlocksByDate(blocks);
+  let visibleSteps = 0;
+  let completedAt: string | null = null;
+
+  for (const date of dateRange(startDate, asOfDate)) {
+    const completedToday = byDate.get(date)?.length ?? 0;
+    if (completedToday > 0) {
+      visibleSteps += completedToday;
+    } else if (date > startDate) {
+      visibleSteps -= 1;
+    }
+    visibleSteps = Math.max(0, Math.min(artworkStepCount, visibleSteps));
+    if (visibleSteps >= artworkStepCount) {
+      completedAt = date;
+      break;
+    }
+  }
+
+  return { visibleSteps, completedAt };
 }
 
 type CoinSide = "heads" | "tails";
@@ -459,6 +541,7 @@ function hslToHex(hue: number, saturation: number, lightness: number) {
 export function buildDailyFractal({
   existing,
   date,
+  asOfDate = date,
   blocks,
   subjects,
   tags,
@@ -466,19 +549,34 @@ export function buildDailyFractal({
 }: {
   existing?: DailyFractal | null;
   date: string;
+  asOfDate?: string;
   blocks: StudyBlock[];
   subjects: Subject[];
   tags: Tag[];
   now: string;
 }): DailyFractal {
-  const params = buildFractalParams({ date, blocks, subjects, tags });
+  const startDate = existing?.startDate ?? existing?.date ?? date;
+  const createdAt = existing?.createdAt ?? now;
+  const cycleBlocks = blocksForArtworkCycle(blocks, startDate, createdAt);
+  const params = buildFractalParams({ date: startDate, blocks: cycleBlocks, subjects, tags });
+  const { visibleSteps, completedAt } = existing?.status === "completed" && existing.endDate
+    ? { visibleSteps: existing.visibleSteps ?? artworkStepCount, completedAt: existing.endDate }
+    : calculateArtworkProgress({ startDate, asOfDate, blocks: cycleBlocks });
+  const status = completedAt ? "completed" : "active";
+  const endDate = completedAt;
   return {
-    id: existing?.id ?? `fractal_${date}`,
-    date,
+    id: existing?.id ?? `fractal_${startDate}_${hashString(now).toString(16)}`,
+    date: startDate,
+    startDate,
+    endDate,
+    status,
+    totalSteps: artworkStepCount,
+    visibleSteps: status === "completed" ? artworkStepCount : visibleSteps,
+    stats: buildArtworkStats(cycleBlocks, startDate, endDate ?? asOfDate),
     seed: params.seed,
     params,
     config: generateFractalConfig(params),
-    createdAt: existing?.createdAt ?? now,
+    createdAt,
     updatedAt: now,
   };
 }

@@ -58,6 +58,14 @@ class StudyBlocksDatabase extends Dexie {
       dailyFractals: "id, &date, createdAt, updatedAt",
       settings: "id",
     });
+    this.version(3).stores({
+      subjects: "id, archivedAt, createdAt",
+      tags: "id, archivedAt, createdAt",
+      studyDays: "id, &date, createdAt",
+      studyBlocks: "id, dayId, date, subjectId, status, *tagIds, startedAt",
+      dailyFractals: "id, date, status, createdAt, updatedAt",
+      settings: "id",
+    });
   }
 }
 
@@ -316,13 +324,12 @@ async function pauseActiveBlocks(exceptId?: string) {
 }
 
 export async function startBlock(blockId: string) {
-  await db.transaction("rw", [db.studyBlocks, db.dailyFractals, db.subjects, db.tags], async () => {
+  await db.transaction("rw", db.studyBlocks, async () => {
     await pauseActiveBlocks(blockId);
     const block = await db.studyBlocks.get(blockId);
     if (!block) return;
     const now = nowIso();
     await db.studyBlocks.put({ ...block, status: "active", startedAt: now, updatedAt: now });
-    await upsertDailyFractal(block.date, now);
   });
 }
 
@@ -357,13 +364,26 @@ export async function completeBlock(blockId: string) {
 }
 
 async function upsertDailyFractal(date: string, now: string) {
-  const [existing, blocks, subjects, tags] = await Promise.all([
-    db.dailyFractals.where("date").equals(date).first(),
+  const [activeFractals, blocks, subjects, tags] = await Promise.all([
+    db.dailyFractals.filter((fractal) => fractal.status === "active").toArray(),
     db.studyBlocks.toArray(),
     db.subjects.toArray(),
     db.tags.toArray(),
   ]);
-  await db.dailyFractals.put(buildDailyFractal({ existing, date, blocks, subjects, tags, now }));
+  const existing = activeFractals.sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0] ?? null;
+  await db.dailyFractals.put(buildDailyFractal({ existing, date: existing?.startDate ?? date, asOfDate: date, blocks, subjects, tags, now }));
+}
+
+export async function ensureDailyFractalProgress(asOfDate = localDateKey()) {
+  const [activeFractals, blocks, subjects, tags] = await Promise.all([
+    db.dailyFractals.filter((fractal) => fractal.status === "active").toArray(),
+    db.studyBlocks.toArray(),
+    db.subjects.toArray(),
+    db.tags.toArray(),
+  ]);
+  const existing = activeFractals.sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
+  if (!existing) return;
+  await db.dailyFractals.put(buildDailyFractal({ existing, date: existing.startDate ?? existing.date, asOfDate, blocks, subjects, tags, now: nowIso() }));
 }
 
 export async function skipBlock(blockId: string) {

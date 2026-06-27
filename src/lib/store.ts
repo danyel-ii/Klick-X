@@ -99,6 +99,7 @@ async function loadSnapshot() {
   const settings = await data.getSettings();
   await data.seedDefaultSubjectsIfEmpty(settings.locale);
   await data.seedDefaultTagsIfEmpty(settings.locale);
+  await data.ensureDailyFractalProgress(localDateKey());
   const [subjects, tags, today, calendarSummary, allDays, allBlocks, dailyFractals] = await Promise.all([
     data.listSubjects(),
     data.listTags(),

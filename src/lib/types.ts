@@ -123,9 +123,30 @@ export type FractalConfig = {
   artwork?: CoinPartitionArtwork;
 };
 
+export type ArtworkLifecycleStatus = "active" | "completed";
+
+export type ArtworkStats = {
+  startDate: string;
+  endDate?: string | null;
+  calendarDays: number;
+  activeDays: number;
+  completedBlocks: number;
+  totalSeconds: number;
+  averageBlocksPerActiveDay: number;
+  averageSecondsPerActiveDay: number;
+  subjectIds: string[];
+  tagIds: string[];
+};
+
 export type DailyFractal = {
   id: string;
   date: string;
+  startDate?: string;
+  endDate?: string | null;
+  status?: ArtworkLifecycleStatus;
+  totalSteps?: number;
+  visibleSteps?: number;
+  stats?: ArtworkStats;
   seed: string;
   params: FractalParams;
   config: FractalConfig;

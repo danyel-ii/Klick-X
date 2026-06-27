@@ -6,7 +6,6 @@ import { useMemo, useState } from "react";
 import { DailyFractalCanvas } from "@/components/DailyFractalCanvas";
 import { Button, PageHeader, SubjectPill, SurfaceCard, TagPill } from "@/components/ui";
 import { calendarMonthDays, formatDate, isToday, localDateKey } from "@/lib/date";
-import { buildDailyFractal } from "@/lib/fractals";
 import { useAppStore } from "@/lib/store";
 import { formatMinutes } from "@/lib/timer";
 import type { DayAssignment, Subject, Tag } from "@/lib/types";
@@ -25,25 +24,12 @@ export default function CalendarPage() {
   const selectedBlocks = allBlocks.filter((block) => block.date === selected).sort((a, b) => a.index - b.index);
   const activeSubjects = subjects.filter((subject) => !subject.archivedAt);
   const activeTags = tags.filter((tag) => !tag.archivedAt);
-  const fractalsByDate = useMemo(() => new Map((dailyFractals ?? []).map((fractal) => [fractal.date, fractal])), [dailyFractals]);
-  const fallbackFractals = useMemo(
-    () =>
-      calendarSummary
-        .filter((summary) => summary.studiedSeconds > 0)
-        .map((summary) => {
-          const existing = fractalsByDate.get(summary.date);
-          return existing?.config.artwork ? existing : buildDailyFractal({ existing, date: summary.date, blocks: allBlocks, subjects, tags, now: `${summary.date}T23:59:59.000Z` });
-        })
-        .sort((a, b) => b.date.localeCompare(a.date)),
-    [allBlocks, calendarSummary, fractalsByDate, subjects, tags],
-  );
-  const persistedSelectedFractal = fractalsByDate.get(selected);
-  const selectedFractal =
-    persistedSelectedFractal?.config.artwork
-      ? persistedSelectedFractal
-      : selectedSummary?.studiedSeconds
-        ? buildDailyFractal({ existing: persistedSelectedFractal, date: selected, blocks: allBlocks, subjects, tags, now: `${selected}T23:59:59.000Z` })
-        : null;
+  const artworks = useMemo(() => (dailyFractals ?? []).filter((fractal) => fractal.config.artwork).sort((a, b) => (b.startDate ?? b.date).localeCompare(a.startDate ?? a.date)), [dailyFractals]);
+  const selectedFractal = artworks.find((fractal) => {
+    const startDate = fractal.startDate ?? fractal.date;
+    const endDate = fractal.endDate ?? localDateKey();
+    return selected >= startDate && selected <= endDate;
+  }) ?? null;
 
   function resizeDraft(nextCount: number) {
     const clamped = Math.min(12, Math.max(1, nextCount));
@@ -113,9 +99,9 @@ export default function CalendarPage() {
             <div className="mt-4 overflow-hidden rounded-2xl border border-[var(--app-border)] bg-[var(--background)]/30 p-2">
               <DailyFractalCanvas fractal={selectedFractal} label={`${t.calendar.fractalForDay} ${formatDate(selected, settings?.locale ?? "en")}`} />
               <div className="mt-2 grid grid-cols-3 gap-2 px-1 pb-1 text-center text-xs text-[var(--muted)]">
-                <span>{selectedFractal.params.completedBlocksToday} {t.calendar.pomodoros}</span>
-                <span>{selectedFractal.params.overallStudyStreakDays} {t.calendar.streak}</span>
-                <span>{selectedFractal.params.daysSinceLastUse} {t.calendar.daysRested}</span>
+                <span>{selectedFractal.visibleSteps ?? selectedFractal.totalSteps} / {selectedFractal.totalSteps ?? 24}</span>
+                <span>{selectedFractal.stats?.calendarDays ?? 1} {t.calendar.artworkDays}</span>
+                <span>{selectedFractal.status === "completed" ? t.calendar.completedArtwork : t.calendar.activeArtwork}</span>
               </div>
             </div>
           ) : null}
@@ -172,24 +158,33 @@ export default function CalendarPage() {
             <p className="text-sm text-[var(--muted)]">{t.calendar.fractalSubtitle}</p>
           </div>
         </div>
-        {fallbackFractals.length ? (
+        {artworks.length ? (
           <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            {fallbackFractals.map((fractal) => (
-              <button
-                key={fractal.id}
-                type="button"
-                onClick={() => setSelected(fractal.date)}
-                className={`rounded-2xl border bg-[var(--background)]/30 p-2 text-left transition hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] ${
-                  selected === fractal.date ? "border-[var(--accent)]" : "border-[var(--app-border)]"
-                }`}
-              >
-                <DailyFractalCanvas fractal={fractal} label={`${t.calendar.fractalForDay} ${formatDate(fractal.date, settings?.locale ?? "en")}`} className="min-h-36" />
-                <div className="mt-2 flex items-center justify-between gap-2 px-1 text-xs text-[var(--muted)]">
-                  <span className="font-semibold text-[var(--foreground)]">{formatDate(fractal.date, settings?.locale ?? "en")}</span>
-                  <span>{fractal.params.completedBlocksToday} {t.calendar.pomodoros}</span>
-                </div>
-              </button>
-            ))}
+            {artworks.map((fractal) => {
+              const startDate = fractal.startDate ?? fractal.date;
+              return (
+                <button
+                  key={fractal.id}
+                  type="button"
+                  onClick={() => setSelected(startDate)}
+                  className={`rounded-2xl border bg-[var(--background)]/30 p-2 text-left transition hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] ${
+                    selected >= startDate && selected <= (fractal.endDate ?? localDateKey()) ? "border-[var(--accent)]" : "border-[var(--app-border)]"
+                  }`}
+                >
+                  <DailyFractalCanvas fractal={fractal} label={`${t.calendar.fractalForDay} ${formatDate(startDate, settings?.locale ?? "en")}`} className="min-h-36" />
+                  <div className="mt-2 grid gap-1 px-1 text-xs text-[var(--muted)]">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-semibold text-[var(--foreground)]">{formatDate(startDate, settings?.locale ?? "en")}</span>
+                      <span>{fractal.visibleSteps ?? fractal.totalSteps}/{fractal.totalSteps ?? 24}</span>
+                    </div>
+                    <div className="flex items-center justify-between gap-2">
+                      <span>{fractal.stats?.completedBlocks ?? 0} {t.calendar.pomodoros}</span>
+                      <span>{fractal.stats ? formatMinutes(fractal.stats.averageSecondsPerActiveDay) : "0m"} / {t.calendar.activeDayShort}</span>
+                    </div>
+                  </div>
+                </button>
+              );
+            })}
           </div>
         ) : (
           <p className="mt-4 text-sm text-[var(--muted)]">{t.calendar.emptyGallery}</p>
