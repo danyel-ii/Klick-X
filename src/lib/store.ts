@@ -78,7 +78,7 @@ class RemoteRequestError extends Error {
 }
 
 function fallbackAllowedFor(status: number, message: string) {
-  return status >= 500 || message.includes("DATABASE_URL is not configured");
+  return status === 401 || status === 403 || status >= 500 || message.includes("DATABASE_URL is not configured");
 }
 
 async function throwRemoteError(response: Response, fallbackMessage: string): Promise<never> {

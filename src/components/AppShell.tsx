@@ -62,9 +62,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     return (
       <>
         <ServiceWorkerRegistration />
-        <main className="grid min-h-screen place-items-center bg-[var(--background)] text-[var(--muted)]">
-          <div className="liquid-glass rounded-full px-5 py-3 font-semibold">Study Blocks</div>
-        </main>
+        <main className="min-h-screen bg-[var(--background)]" aria-label="Loading" />
         <InstallPrompt />
       </>
     );
