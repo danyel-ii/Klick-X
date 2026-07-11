@@ -293,6 +293,7 @@ function svg() {
   <defs>
     <clipPath id="rounded"><rect width="${size}" height="${size}" rx="${radius}" ry="${radius}"/></clipPath>
   </defs>
+  <rect width="${size}" height="${size}" fill="${black}"/>
   <g clip-path="url(#rounded)">
     <rect width="${size}" height="${size}" fill="${black}"/>
     <g>${paths}</g>
@@ -325,15 +326,20 @@ async function main() {
   const iconSvgPath = path.join(root, "public", "icon.svg");
   await fs.writeFile(iconSvgPath, iconSvg);
 
-  const render = (imageSize, { opaque = false } = {}) => {
+  const render = (imageSize, { opaque = true } = {}) => {
     let pipeline = sharp(Buffer.from(iconSvg)).resize(imageSize, imageSize);
     if (opaque) pipeline = pipeline.flatten({ background: black });
     return pipeline.png({ palette: true, colors: 256, compressionLevel: 9, dither: 0 });
   };
+  await render(512).toFile(path.join(root, "public", "icon.png"));
   await render(180).toFile(path.join(root, "public", "icons", "apple-touch-icon.png"));
+  await render(180).toFile(path.join(root, "public", "icons", "apple-touch-icon-grayscale.png"));
   await render(192).toFile(path.join(root, "public", "icons", "icon-192.png"));
+  await render(192).toFile(path.join(root, "public", "icons", "icon-192-grayscale.png"));
   await render(512).toFile(path.join(root, "public", "icons", "icon-512.png"));
+  await render(512).toFile(path.join(root, "public", "icons", "icon-512-grayscale.png"));
   await render(512, { opaque: true }).toFile(path.join(root, "public", "icons", "maskable-512.png"));
+  await render(512, { opaque: true }).toFile(path.join(root, "public", "icons", "maskable-512-grayscale.png"));
   await render(1254).toFile(path.join(root, "public", "icons", "image.png"));
 
   const faviconPng = await render(32).toBuffer();
