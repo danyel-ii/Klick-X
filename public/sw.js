@@ -1,4 +1,4 @@
-const CACHE_VERSION = "study-blocks-v3";
+const CACHE_VERSION = "study-blocks-v4";
 const APP_SHELL = ["/login", "/manifest.webmanifest", "/icon.svg", "/icons/icon-192.png", "/icons/icon-512.png", "/icons/maskable-512.png"];
 const DATABASE_NAME = "study-blocks";
 const TIMER_NOTIFICATION_TAG = "study-blocks-active-timer";
@@ -146,9 +146,32 @@ function accumulateElapsed(block, now) {
 }
 
 async function updateBlockFromNotification(blockId, action) {
+  const remoteResult = await updateRemoteBlockFromNotification(blockId, action);
+  if (remoteResult) {
+    await cacheRemoteBlocks(remoteResult.blocks).catch(() => undefined);
+    await clearTimerNotifications();
+    return true;
+  }
+
+  return updateLocalBlockFromNotification(blockId, action);
+}
+
+async function cacheRemoteBlocks(blocks) {
+  if (!blocks.length) return;
+  const database = await openDatabase();
+
+  try {
+    const { store, done } = getObjectStore(database, "studyBlocks", "readwrite");
+    blocks.forEach((block) => store.put(block));
+    await done;
+  } finally {
+    database.close();
+  }
+}
+
+async function updateLocalBlockFromNotification(blockId, action) {
   const database = await openDatabase();
   const now = new Date();
-  let updatedLocalBlock = false;
 
   try {
     const { store, done } = getObjectStore(database, "studyBlocks", "readwrite");
@@ -167,11 +190,9 @@ async function updateBlockFromNotification(blockId, action) {
     store.put(nextBlock);
     await done;
     await clearTimerNotifications();
-    updatedLocalBlock = true;
     return true;
   } finally {
     database.close();
-    if (!updatedLocalBlock) await updateRemoteBlockFromNotification(blockId, action);
   }
 }
 
@@ -183,7 +204,12 @@ async function updateRemoteBlockFromNotification(blockId, action) {
     body: JSON.stringify({ action: apiAction, payload: { id: blockId } }),
   }).catch(() => null);
 
-  if (response?.ok) await clearTimerNotifications();
+  if (!response?.ok) return null;
+
+  const payload = await response.json().catch(() => null);
+  return {
+    blocks: Array.isArray(payload?.blocks) ? payload.blocks : [],
+  };
 }
 
 async function notifyClientsToRefresh() {

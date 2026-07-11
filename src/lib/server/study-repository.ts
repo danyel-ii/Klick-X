@@ -1,8 +1,9 @@
 import { neon, type NeonQueryFunction } from "@neondatabase/serverless";
-import { buildStatsSummary } from "@/lib/analytics";
+import { buildCalendarSummary, buildStatsSummary } from "@/lib/analytics";
 import { defaultTagColorValues, resolveSubjectColor, resolveTagColor, subjectColorValues } from "@/lib/colors";
 import { localDateKey } from "@/lib/date";
-import { buildDailyFractal } from "@/lib/fractals";
+import { artworkCompletionAtOffset, buildDailyFractal, compactDailyFractal, nextArtworkCompletionOffset } from "@/lib/fractals";
+import { hasSameDailyFractalContent, isDailyFractalCurrent } from "@/lib/fractal-persistence";
 import { detectLocale } from "@/lib/i18n";
 import { normalizeExportPayload } from "@/lib/import-validation";
 import { accumulateElapsed } from "@/lib/timer";
@@ -84,66 +85,137 @@ async function ensureSchema() {
   if (!schemaReady) {
     schemaReady = (async () => {
       const db = sql();
-      await db`
-        CREATE TABLE IF NOT EXISTS app_settings (
-          id TEXT PRIMARY KEY,
-          data JSONB NOT NULL,
-          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-        )
+      const schemaState = await db`
+        SELECT
+          to_regclass('public.app_settings') IS NOT NULL AS has_settings,
+          to_regclass('public.subjects') IS NOT NULL AS has_subjects,
+          to_regclass('public.tags') IS NOT NULL AS has_tags,
+          to_regclass('public.study_days') IS NOT NULL AS has_days,
+          to_regclass('public.study_blocks') IS NOT NULL AS has_blocks,
+          to_regclass('public.daily_fractals') IS NOT NULL AS has_fractals,
+          to_regclass('public.study_blocks_single_active_idx') IS NOT NULL AS has_single_active_index,
+          to_regclass('public.daily_fractals_single_active_idx') IS NOT NULL AS has_single_active_fractal_index,
+          to_regclass('public.daily_fractals_completion_offset_idx') IS NOT NULL AS has_fractal_offset_index,
+          EXISTS (
+            SELECT 1 FROM pg_constraint
+            WHERE conrelid = to_regclass('public.daily_fractals') AND conname = 'daily_fractals_date_key'
+          ) AS has_unique_fractal_date
       `;
-      await db`
-        CREATE TABLE IF NOT EXISTS subjects (
-          id TEXT PRIMARY KEY,
-          archived_at TEXT,
-          created_at TEXT NOT NULL,
-          data JSONB NOT NULL
-        )
-      `;
-      await db`
-        CREATE TABLE IF NOT EXISTS tags (
-          id TEXT PRIMARY KEY,
-          archived_at TEXT,
-          created_at TEXT NOT NULL,
-          data JSONB NOT NULL
-        )
-      `;
-      await db`
-        CREATE TABLE IF NOT EXISTS study_days (
-          id TEXT PRIMARY KEY,
-          date TEXT NOT NULL UNIQUE,
-          created_at TEXT NOT NULL,
-          data JSONB NOT NULL
-        )
-      `;
-      await db`
-        CREATE TABLE IF NOT EXISTS study_blocks (
-          id TEXT PRIMARY KEY,
-          day_id TEXT NOT NULL,
-          date TEXT NOT NULL,
-          subject_id TEXT NOT NULL,
-          status TEXT NOT NULL,
-          tag_ids JSONB NOT NULL,
-          started_at TEXT,
-          created_at TEXT NOT NULL,
-          data JSONB NOT NULL
-        )
-      `;
-      await db`
-        CREATE TABLE IF NOT EXISTS daily_fractals (
-          id TEXT PRIMARY KEY,
-          date TEXT NOT NULL UNIQUE,
-          created_at TEXT NOT NULL,
-          updated_at TEXT NOT NULL,
-          data JSONB NOT NULL
-        )
-      `;
-      await db`CREATE INDEX IF NOT EXISTS subjects_archived_at_idx ON subjects (archived_at)`;
-      await db`CREATE INDEX IF NOT EXISTS tags_archived_at_idx ON tags (archived_at)`;
-      await db`CREATE INDEX IF NOT EXISTS study_blocks_date_idx ON study_blocks (date)`;
-      await db`CREATE INDEX IF NOT EXISTS study_blocks_subject_id_idx ON study_blocks (subject_id)`;
-      await db`CREATE INDEX IF NOT EXISTS study_blocks_status_idx ON study_blocks (status)`;
-      await db`CREATE INDEX IF NOT EXISTS daily_fractals_date_idx ON daily_fractals (date)`;
-    })();
+      const current = schemaState[0];
+      if (
+        current?.has_settings === true &&
+        current.has_subjects === true &&
+        current.has_tags === true &&
+        current.has_days === true &&
+        current.has_blocks === true &&
+        current.has_fractals === true &&
+        current.has_single_active_index === true &&
+        current.has_single_active_fractal_index === true &&
+        current.has_fractal_offset_index === true &&
+        current.has_unique_fractal_date === false
+      ) return;
+      await db.transaction((txn) => [
+        txn`
+          CREATE TABLE IF NOT EXISTS app_settings (
+            id TEXT PRIMARY KEY,
+            data JSONB NOT NULL,
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+          )
+        `,
+        txn`
+          CREATE TABLE IF NOT EXISTS subjects (
+            id TEXT PRIMARY KEY,
+            archived_at TEXT,
+            created_at TEXT NOT NULL,
+            data JSONB NOT NULL
+          )
+        `,
+        txn`
+          CREATE TABLE IF NOT EXISTS tags (
+            id TEXT PRIMARY KEY,
+            archived_at TEXT,
+            created_at TEXT NOT NULL,
+            data JSONB NOT NULL
+          )
+        `,
+        txn`
+          CREATE TABLE IF NOT EXISTS study_days (
+            id TEXT PRIMARY KEY,
+            date TEXT NOT NULL UNIQUE,
+            created_at TEXT NOT NULL,
+            data JSONB NOT NULL
+          )
+        `,
+        txn`
+          CREATE TABLE IF NOT EXISTS study_blocks (
+            id TEXT PRIMARY KEY,
+            day_id TEXT NOT NULL,
+            date TEXT NOT NULL,
+            subject_id TEXT NOT NULL,
+            status TEXT NOT NULL,
+            tag_ids JSONB NOT NULL,
+            started_at TEXT,
+            created_at TEXT NOT NULL,
+            data JSONB NOT NULL
+          )
+        `,
+        txn`
+          CREATE TABLE IF NOT EXISTS daily_fractals (
+            id TEXT PRIMARY KEY,
+            date TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            data JSONB NOT NULL
+          )
+        `,
+        txn`ALTER TABLE daily_fractals DROP CONSTRAINT IF EXISTS daily_fractals_date_key`,
+        txn`
+          WITH ranked_active AS (
+            SELECT id, ROW_NUMBER() OVER (ORDER BY COALESCE(data->>'updatedAt', created_at) DESC, id DESC) AS position
+            FROM study_blocks
+            WHERE status = 'active'
+          )
+          UPDATE study_blocks AS block
+          SET
+            status = 'paused',
+            started_at = NULL,
+            data = block.data || jsonb_build_object(
+              'status', 'paused',
+              'elapsedSeconds', COALESCE((block.data->>'elapsedSeconds')::double precision, 0)::int +
+                CASE
+                  WHEN block.started_at IS NULL THEN 0
+                  ELSE GREATEST(0, EXTRACT(EPOCH FROM (NOW() - block.started_at::timestamptz))::int)
+                END,
+              'startedAt', NULL,
+              'updatedAt', to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')
+            )
+          FROM ranked_active
+          WHERE block.id = ranked_active.id AND ranked_active.position > 1
+        `,
+        txn`
+          WITH ranked_active_artwork AS (
+            SELECT id, ROW_NUMBER() OVER (ORDER BY updated_at DESC, id DESC) AS position
+            FROM daily_fractals
+            WHERE data->>'status' = 'active'
+          )
+          DELETE FROM daily_fractals AS fractal
+          USING ranked_active_artwork
+          WHERE fractal.id = ranked_active_artwork.id AND ranked_active_artwork.position > 1
+        `,
+        txn`CREATE INDEX IF NOT EXISTS subjects_archived_at_idx ON subjects (archived_at)`,
+        txn`CREATE INDEX IF NOT EXISTS tags_archived_at_idx ON tags (archived_at)`,
+        txn`CREATE INDEX IF NOT EXISTS study_blocks_date_idx ON study_blocks (date)`,
+        txn`CREATE INDEX IF NOT EXISTS study_blocks_subject_id_idx ON study_blocks (subject_id)`,
+        txn`CREATE INDEX IF NOT EXISTS study_blocks_status_idx ON study_blocks (status)`,
+        txn`CREATE UNIQUE INDEX IF NOT EXISTS study_blocks_single_active_idx ON study_blocks (status) WHERE status = 'active'`,
+        txn`CREATE INDEX IF NOT EXISTS daily_fractals_date_idx ON daily_fractals (date)`,
+        txn`CREATE UNIQUE INDEX IF NOT EXISTS daily_fractals_single_active_idx ON daily_fractals ((data->>'status')) WHERE data->>'status' = 'active'`,
+        txn`CREATE UNIQUE INDEX IF NOT EXISTS daily_fractals_completion_offset_idx ON daily_fractals (((data->>'completionOffset')::int)) WHERE data ? 'completionOffset'`,
+      ]);
+    })().catch((error) => {
+      schemaReady = null;
+      throw error;
+    });
   }
   return schemaReady;
 }
@@ -206,17 +278,30 @@ async function putBlock(block: StudyBlock) {
   `;
 }
 
-async function putDailyFractal(fractal: DailyFractal) {
+async function putDailyFractalIfCurrent(fractal: DailyFractal, existing: DailyFractal | null) {
   const db = await readySql();
-  await db`
-    INSERT INTO daily_fractals (id, date, created_at, updated_at, data)
-    VALUES (${fractal.id}, ${fractal.date}, ${fractal.createdAt}, ${fractal.updatedAt}, ${json(fractal)}::jsonb)
-    ON CONFLICT (id) DO UPDATE SET
-      date = EXCLUDED.date,
-      created_at = EXCLUDED.created_at,
-      updated_at = EXCLUDED.updated_at,
-      data = EXCLUDED.data
-  `;
+  const compactFractal = compactDailyFractal(fractal);
+  const expectedData = existing ? json(compactDailyFractal(existing)) : null;
+  const rows = existing
+    ? await db`
+        UPDATE daily_fractals
+        SET
+          date = ${compactFractal.date},
+          created_at = ${compactFractal.createdAt},
+          updated_at = ${compactFractal.updatedAt},
+          data = ${json(compactFractal)}::jsonb
+        WHERE id = ${existing.id}
+          AND updated_at = ${existing.updatedAt}
+          AND data = ${expectedData}::jsonb
+        RETURNING data
+      `
+    : await db`
+        INSERT INTO daily_fractals (id, date, created_at, updated_at, data)
+        VALUES (${compactFractal.id}, ${compactFractal.date}, ${compactFractal.createdAt}, ${compactFractal.updatedAt}, ${json(compactFractal)}::jsonb)
+        ON CONFLICT (id) DO NOTHING
+        RETURNING data
+      `;
+  return rows[0] ? dataOf<DailyFractal>(rows[0] as { data: DailyFractal | string }) : null;
 }
 
 export async function getSettings() {
@@ -257,12 +342,15 @@ export async function listSubjects() {
   return rows.map((row) => dataOf<Subject>(row as { data: Subject | string }));
 }
 
-export async function seedDefaultSubjectsIfEmpty(locale: Locale) {
-  const db = await readySql();
-  const rows = await db`SELECT COUNT(*)::int AS count FROM subjects WHERE archived_at IS NULL`;
-  if (Number(rows[0]?.count ?? 0) > 0) return;
+export async function seedDefaultSubjectsIfEmpty(locale: Locale, knownSubjects?: Subject[]) {
+  if (knownSubjects?.some((subject) => !subject.archivedAt)) return [];
+  if (!knownSubjects) {
+    const db = await readySql();
+    const rows = await db`SELECT COUNT(*)::int AS count FROM subjects WHERE archived_at IS NULL`;
+    if (Number(rows[0]?.count ?? 0) > 0) return [];
+  }
   const now = nowIso();
-  for (const subject of seedSubjects[locale].map((name, index) => ({
+  const subjects = seedSubjects[locale].map((name, index) => ({
     id: id("subject"),
     name,
     color: subjectColorValues[index % subjectColorValues.length],
@@ -270,9 +358,14 @@ export async function seedDefaultSubjectsIfEmpty(locale: Locale) {
     archivedAt: null,
     createdAt: now,
     updatedAt: now,
-  }))) {
-    await putSubject(subject);
-  }
+  }));
+  const db = await readySql();
+  await db`
+    INSERT INTO subjects (id, archived_at, created_at, data)
+    SELECT item->>'id', item->>'archivedAt', item->>'createdAt', item
+    FROM jsonb_array_elements(${json(subjects)}::jsonb) AS item
+  `;
+  return subjects;
 }
 
 export async function createSubject(input: { name: string; color: string; icon?: string }) {
@@ -319,12 +412,15 @@ export async function listTags() {
   return rows.map((row) => dataOf<Tag>(row as { data: Tag | string }));
 }
 
-export async function seedDefaultTagsIfEmpty(locale: Locale) {
-  const db = await readySql();
-  const rows = await db`SELECT COUNT(*)::int AS count FROM tags WHERE archived_at IS NULL`;
-  if (Number(rows[0]?.count ?? 0) > 0) return;
+export async function seedDefaultTagsIfEmpty(locale: Locale, knownTags?: Tag[]) {
+  if (knownTags?.some((tag) => !tag.archivedAt)) return [];
+  if (!knownTags) {
+    const db = await readySql();
+    const rows = await db`SELECT COUNT(*)::int AS count FROM tags WHERE archived_at IS NULL`;
+    if (Number(rows[0]?.count ?? 0) > 0) return [];
+  }
   const now = nowIso();
-  for (const tag of seedTags[locale].map((name, index) => ({
+  const tags = seedTags[locale].map((name, index) => ({
     id: id("tag"),
     name,
     color: defaultTagColorValues[index % defaultTagColorValues.length],
@@ -332,9 +428,14 @@ export async function seedDefaultTagsIfEmpty(locale: Locale) {
     archivedAt: null,
     createdAt: now,
     updatedAt: now,
-  }))) {
-    await putTag(tag);
-  }
+  }));
+  const db = await readySql();
+  await db`
+    INSERT INTO tags (id, archived_at, created_at, data)
+    SELECT item->>'id', item->>'archivedAt', item->>'createdAt', item
+    FROM jsonb_array_elements(${json(tags)}::jsonb) AS item
+  `;
+  return tags;
 }
 
 export async function createTag(input: { name: string; color: string; description?: string }) {
@@ -398,26 +499,47 @@ export async function createOrUpdateDayPlan(date: string, plannedBlockCount: num
   const day: StudyDay = currentDay
     ? { ...currentDay, plannedBlockCount, updatedAt: now }
     : { id: id("day"), date, plannedBlockCount, createdAt: now, updatedAt: now };
-  await putDay(day);
-  await db`DELETE FROM study_blocks WHERE date = ${date}`;
-  for (const [index, assignment] of assignments.entries()) {
-    await putBlock({
-      id: id("block"),
-      dayId: day.id,
-      date,
-      index,
-      subjectId: assignment.subjectId,
-      tagIds: assignment.tagIds,
-      status: "planned",
-      plannedMinutes: 30,
-      elapsedSeconds: 0,
-      startedAt: null,
-      completedAt: null,
-      note: "",
-      createdAt: now,
-      updatedAt: now,
-    });
-  }
+  const blocks: StudyBlock[] = assignments.map((assignment, index) => ({
+    id: id("block"),
+    dayId: day.id,
+    date,
+    index,
+    subjectId: assignment.subjectId,
+    tagIds: assignment.tagIds,
+    status: "planned",
+    plannedMinutes: 30,
+    elapsedSeconds: 0,
+    startedAt: null,
+    completedAt: null,
+    note: "",
+    createdAt: now,
+    updatedAt: now,
+  }));
+  await db.transaction((txn) => [
+    txn`
+      INSERT INTO study_days (id, date, created_at, data)
+      VALUES (${day.id}, ${day.date}, ${day.createdAt}, ${json(day)}::jsonb)
+      ON CONFLICT (id) DO UPDATE SET
+        date = EXCLUDED.date,
+        created_at = EXCLUDED.created_at,
+        data = EXCLUDED.data
+    `,
+    txn`DELETE FROM study_blocks WHERE date = ${date}`,
+    txn`
+      INSERT INTO study_blocks (id, day_id, date, subject_id, status, tag_ids, started_at, created_at, data)
+      SELECT
+        item->>'id',
+        item->>'dayId',
+        item->>'date',
+        item->>'subjectId',
+        item->>'status',
+        COALESCE(item->'tagIds', '[]'::jsonb),
+        item->>'startedAt',
+        item->>'createdAt',
+        item
+      FROM jsonb_array_elements(${json(blocks)}::jsonb) AS item
+    `,
+  ]);
 }
 
 export async function addBlockToDay(date: string, input: DayAssignment) {
@@ -449,12 +571,23 @@ export async function addBlockToDay(date: string, input: DayAssignment) {
 
 export async function deleteBlock(blockId: string) {
   const db = await readySql();
-  const block = await getBlock(blockId);
-  if (!block) return;
-  if (block.status === "active") throw new Error("Active blocks cannot be deleted.");
+  const deletedRows = await db`
+    DELETE FROM study_blocks
+    WHERE id = ${blockId}
+      AND status NOT IN ('active', 'completed')
+      AND COALESCE((data->>'elapsedSeconds')::double precision, 0) = 0
+      AND NULLIF(data->>'completedAt', '') IS NULL
+    RETURNING data
+  `;
+  if (!deletedRows[0]) {
+    const current = await getBlock(blockId);
+    if (current?.status === "active") throw new Error("Active blocks cannot be deleted.");
+    if (current && (current.status === "completed" || current.elapsedSeconds > 0 || current.completedAt)) throw new Error("Studied blocks cannot be deleted.");
+    return;
+  }
+  const block = dataOf<StudyBlock>(deletedRows[0] as { data: StudyBlock | string });
   const dayRows = await db`SELECT data FROM study_days WHERE id = ${block.dayId} LIMIT 1`;
   const day = dayRows[0] ? dataOf<StudyDay>(dayRows[0] as { data: StudyDay | string }) : null;
-  await db`DELETE FROM study_blocks WHERE id = ${blockId}`;
   const remainingBlocks = await listBlocksForDate(block.date);
   const now = nowIso();
   for (const [index, item] of remainingBlocks.entries()) {
@@ -481,116 +614,263 @@ async function getBlock(blockId: string) {
   return rows[0] ? dataOf<StudyBlock>(rows[0] as { data: StudyBlock | string }) : null;
 }
 
+type BlockRuntimePatch = Pick<StudyBlock, "status" | "updatedAt"> & {
+  startedAt: string | null;
+  elapsedSeconds?: number;
+  completedAt?: string | null;
+};
+
+async function updateBlockRuntime(blockId: string, patch: BlockRuntimePatch) {
+  const db = await readySql();
+  const patchJson = json(patch);
+  const rows = await db`
+    UPDATE study_blocks
+    SET
+      status = ${patch.status},
+      started_at = ${patch.startedAt},
+      data = data || ${patchJson}::jsonb
+    WHERE id = ${blockId}
+      AND (
+        (${patch.status}::text = 'active' AND status IN ('planned', 'paused'))
+        OR (${patch.status}::text = 'paused' AND status = 'active')
+        OR (${patch.status}::text IN ('completed', 'skipped') AND status IN ('planned', 'active', 'paused'))
+      )
+    RETURNING data
+  `;
+  return rows[0] ? dataOf<StudyBlock>(rows[0] as { data: StudyBlock | string }) : null;
+}
+
 async function pauseActiveBlocks(exceptId?: string) {
   const db = await readySql();
   const rows = await db`SELECT data FROM study_blocks WHERE status = 'active'`;
   const now = new Date();
+  const paused: StudyBlock[] = [];
   for (const row of rows) {
     const block = dataOf<StudyBlock>(row as { data: StudyBlock | string });
     if (block.id === exceptId) continue;
-    await putBlock({
-      ...block,
+    const updated = await updateBlockRuntime(block.id, {
       status: "paused",
       elapsedSeconds: accumulateElapsed(block, now),
       startedAt: null,
       updatedAt: now.toISOString(),
     });
+    if (updated) paused.push(updated);
   }
+  return paused;
 }
 
 export async function startBlock(blockId: string) {
-  await pauseActiveBlocks(blockId);
-  const block = await getBlock(blockId);
-  if (!block) return;
-  const now = nowIso();
-  await putBlock({ ...block, status: "active", startedAt: now, updatedAt: now });
+  const changedById = new Map<string, StudyBlock>();
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const block = await getBlock(blockId);
+    if (!block) return [...changedById.values()];
+    if (block.status === "completed" || block.status === "skipped" || block.status === "active") {
+      changedById.set(block.id, block);
+      return [...changedById.values()];
+    }
+    const paused = await pauseActiveBlocks(blockId);
+    paused.forEach((block) => changedById.set(block.id, block));
+    const now = nowIso();
+    try {
+      const updated = await updateBlockRuntime(block.id, { status: "active", startedAt: now, updatedAt: now });
+      if (updated) changedById.set(updated.id, updated);
+      else {
+        const current = await getBlock(block.id);
+        if (current) changedById.set(current.id, current);
+      }
+      return [...changedById.values()];
+    } catch (error) {
+      const code = typeof error === "object" && error !== null && "code" in error ? String(error.code) : "";
+      if (code !== "23505" || attempt === 1) throw error;
+    }
+  }
+  return [...changedById.values()];
 }
 
 export async function pauseBlock(blockId: string) {
   const block = await getBlock(blockId);
-  if (!block) return;
+  if (!block) return [];
+  if (block.status !== "active") return [block];
   const now = new Date();
-  await putBlock({ ...block, status: "paused", elapsedSeconds: accumulateElapsed(block, now), startedAt: null, updatedAt: now.toISOString() });
+  const updated = await updateBlockRuntime(block.id, { status: "paused", elapsedSeconds: accumulateElapsed(block, now), startedAt: null, updatedAt: now.toISOString() });
+  if (updated) return [updated];
+  const current = await getBlock(block.id);
+  return current ? [current] : [];
 }
 
 export async function completeBlock(blockId: string) {
   const block = await getBlock(blockId);
-  if (!block) return;
+  if (!block) return { blocks: [], dailyFractals: [] };
+  if (block.status === "completed" || block.status === "skipped") return { blocks: [block], dailyFractals: [] };
   const now = new Date();
-  await putBlock({
-    ...block,
+  const updated = await updateBlockRuntime(block.id, {
     status: "completed",
     elapsedSeconds: accumulateElapsed(block, now),
     startedAt: null,
     completedAt: now.toISOString(),
     updatedAt: now.toISOString(),
   });
-  await upsertDailyFractal(block.date, now.toISOString());
+  if (!updated) {
+    const current = await getBlock(block.id);
+    return { blocks: current ? [current] : [], dailyFractals: [] };
+  }
+  const fractal = await upsertDailyFractal(block.date, now.toISOString());
+  return { blocks: [updated], dailyFractals: fractal ? [fractal] : [] };
 }
 
 async function listDailyFractals() {
   const db = await readySql();
-  const rows = await db`SELECT data FROM daily_fractals ORDER BY date`;
+  const rows = await db`
+    SELECT data #- '{config,artwork}' AS data, data #> '{config,artwork}' IS NOT NULL AS had_artwork
+    FROM daily_fractals
+    ORDER BY date
+  `;
+  if (rows.some((row) => row.had_artwork === true)) {
+    await db`UPDATE daily_fractals SET data = data #- '{config,artwork}' WHERE data #> '{config,artwork}' IS NOT NULL`;
+  }
   return rows.map((row) => dataOf<DailyFractal>(row as { data: DailyFractal | string }));
 }
 
 async function upsertDailyFractal(date: string, now: string) {
-  const [fractals, blocks, subjects, tags] = await Promise.all([listDailyFractals(), listAllBlocks(), listSubjects(), listTags()]);
-  const existing = fractals.filter((fractal) => fractal.status === "active").sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0] ?? null;
-  await putDailyFractal(buildDailyFractal({ existing, date: existing?.startDate ?? date, asOfDate: date, blocks, subjects, tags, now }));
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const [fractals, blocks, subjects, tags] = await Promise.all([listDailyFractals(), listAllBlocks(), listSubjects(), listTags()]);
+    const existing = fractals.filter((fractal) => fractal.status === "active").sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0] ?? null;
+    const nextCompletionOffset = nextArtworkCompletionOffset(fractals, blocks);
+    const next = buildDailyFractal({
+      existing,
+      date: existing?.startDate ?? date,
+      asOfDate: date,
+      blocks,
+      subjects,
+      tags,
+      now,
+      completionOffset: existing ? nextCompletionOffset : (nextCompletionOffset ?? 0),
+    });
+    if (existing && hasSameDailyFractalContent(existing, next)) return existing;
+    try {
+      const persisted = await putDailyFractalIfCurrent(next, existing);
+      if (persisted) return compactDailyFractal(persisted);
+    } catch (error) {
+      const code = typeof error === "object" && error !== null && "code" in error ? String(error.code) : "";
+      if (code !== "23505" || attempt === 2) throw error;
+    }
+  }
+  throw new Error("Artwork progress could not be saved after concurrent updates.");
 }
 
-async function ensureDailyFractalProgress(asOfDate = localDateKey()) {
-  const [fractals, blocks, subjects, tags] = await Promise.all([listDailyFractals(), listAllBlocks(), listSubjects(), listTags()]);
+async function ensureDailyFractalProgress({
+  asOfDate,
+  fractals,
+  blocks,
+  days,
+  subjects,
+  tags,
+}: {
+  asOfDate: string;
+  fractals: DailyFractal[];
+  blocks: StudyBlock[];
+  days: StudyDay[];
+  subjects: Subject[];
+  tags: Tag[];
+}) {
   const existing = fractals.filter((fractal) => fractal.status === "active").sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
-  if (!existing) return;
-  await putDailyFractal(buildDailyFractal({ existing, date: existing.startDate ?? existing.date, asOfDate, blocks, subjects, tags, now: nowIso() }));
+  const completionOffset = nextArtworkCompletionOffset(fractals, blocks) ?? 0;
+  if (!existing) {
+    const firstUnconsumedCompletion = artworkCompletionAtOffset(blocks, completionOffset);
+    if (!firstUnconsumedCompletion || firstUnconsumedCompletion.date > asOfDate) return fractals;
+    const next = buildDailyFractal({
+      date: firstUnconsumedCompletion.date,
+      asOfDate,
+      blocks,
+      subjects,
+      tags,
+      now: nowIso(),
+      completionOffset,
+    });
+    try {
+      const persisted = await putDailyFractalIfCurrent(next, null);
+      if (!persisted) return listDailyFractals();
+      return [...fractals, compactDailyFractal(persisted)];
+    } catch (error) {
+      const code = typeof error === "object" && error !== null && "code" in error ? String(error.code) : "";
+      if (code === "23505") return listDailyFractals();
+      throw error;
+    }
+  }
+  if (isDailyFractalCurrent(existing, asOfDate, [...blocks, ...days])) return fractals;
+  const next = buildDailyFractal({
+    existing,
+    date: existing.startDate ?? existing.date,
+    asOfDate,
+    blocks,
+    subjects,
+    tags,
+    now: nowIso(),
+    completionOffset,
+  });
+  if (hasSameDailyFractalContent(existing, next)) return fractals;
+  const persisted = await putDailyFractalIfCurrent(next, existing);
+  if (!persisted) return listDailyFractals();
+  const compactNext = compactDailyFractal(persisted);
+  return fractals.map((fractal) => (fractal.id === compactNext.id ? compactNext : fractal));
 }
 
 export async function skipBlock(blockId: string) {
   const block = await getBlock(blockId);
-  if (!block) return;
+  if (!block) return [];
+  if (block.status === "completed" || block.status === "skipped") return [block];
   const now = new Date();
-  await putBlock({ ...block, status: "skipped", elapsedSeconds: accumulateElapsed(block, now), startedAt: null, updatedAt: now.toISOString() });
+  const updated = await updateBlockRuntime(block.id, { status: "skipped", elapsedSeconds: accumulateElapsed(block, now), startedAt: null, updatedAt: now.toISOString() });
+  if (updated) return [updated];
+  const current = await getBlock(block.id);
+  return current ? [current] : [];
 }
 
 export async function updateBlockSubject(blockId: string, subjectId: string) {
-  const block = await getBlock(blockId);
-  if (!block) return;
-  await putBlock({ ...block, subjectId, updatedAt: nowIso() });
+  const db = await readySql();
+  const patch = json({ subjectId, updatedAt: nowIso() });
+  const rows = await db`
+    UPDATE study_blocks
+    SET subject_id = ${subjectId}, data = data || ${patch}::jsonb
+    WHERE id = ${blockId}
+    RETURNING data
+  `;
+  return rows[0] ? [dataOf<StudyBlock>(rows[0] as { data: StudyBlock | string })] : [];
 }
 
 export async function updateBlockTags(blockId: string, tagIds: string[]) {
-  const block = await getBlock(blockId);
-  if (!block) return;
-  await putBlock({ ...block, tagIds, updatedAt: nowIso() });
+  const db = await readySql();
+  const patch = json({ tagIds, updatedAt: nowIso() });
+  const rows = await db`
+    UPDATE study_blocks
+    SET tag_ids = ${json(tagIds)}::jsonb, data = data || ${patch}::jsonb
+    WHERE id = ${blockId}
+    RETURNING data
+  `;
+  return rows[0] ? [dataOf<StudyBlock>(rows[0] as { data: StudyBlock | string })] : [];
 }
 
 export async function updateBlockNote(blockId: string, note: string) {
-  const block = await getBlock(blockId);
-  if (!block) return;
-  await putBlock({ ...block, note, updatedAt: nowIso() });
+  const db = await readySql();
+  const updatedAt = nowIso();
+  const patch = json({ note, updatedAt });
+  const rows = await db`
+    UPDATE study_blocks
+    SET data = data || ${patch}::jsonb
+    WHERE id = ${blockId}
+    RETURNING data
+  `;
+  return rows[0] ? dataOf<StudyBlock>(rows[0] as { data: StudyBlock | string }) : null;
 }
 
 export async function getCalendarSummary(): Promise<CalendarDaySummary[]> {
-  const days = await listAllDays();
-  const blocks = await listAllBlocks();
-  return days
-    .map((day) => {
-      const dayBlocks = blocks.filter((block) => block.date === day.date);
-      return {
-        date: day.date,
-        plannedBlocks: day.plannedBlockCount,
-        completedBlocks: dayBlocks.filter((block) => block.status === "completed").length,
-        studiedSeconds: dayBlocks.reduce((sum, block) => sum + block.elapsedSeconds, 0),
-      };
-    })
-    .sort((a, b) => a.date.localeCompare(b.date));
+  const [days, blocks] = await Promise.all([listAllDays(), listAllBlocks()]);
+  return buildCalendarSummary(days, blocks);
 }
 
-export async function getStats(filters: StatsFilters): Promise<StatsSummary> {
+export async function getStats(filters: StatsFilters, todayKey = localDateKey()): Promise<StatsSummary> {
   const [days, blocks, subjects, tags] = await Promise.all([listAllDays(), listAllBlocks(), listSubjects(), listTags()]);
-  return buildStatsSummary({ days, blocks, subjects, tags, filters, todayKey: localDateKey() });
+  return buildStatsSummary({ days, blocks, subjects, tags, filters, todayKey });
 }
 
 export async function exportLocalData(): Promise<ExportPayload> {
@@ -601,44 +881,85 @@ export async function exportLocalData(): Promise<ExportPayload> {
 export async function importLocalData(payload: ExportPayload) {
   const next = normalizeExportPayload(payload);
   const db = await readySql();
-  await db`DELETE FROM study_blocks`;
-  await db`DELETE FROM daily_fractals`;
-  await db`DELETE FROM study_days`;
-  await db`DELETE FROM subjects`;
-  await db`DELETE FROM tags`;
-  await db`DELETE FROM app_settings`;
-  for (const subject of next.subjects) await putSubject(subject);
-  for (const tag of next.tags) await putTag(tag);
-  for (const day of next.studyDays) await putDay(day);
-  for (const block of next.studyBlocks) await putBlock(block);
-  for (const fractal of next.dailyFractals) await putDailyFractal(fractal);
-  if (next.settings) await updateSettings(next.settings);
+  const compactFractals = next.dailyFractals.map(compactDailyFractal);
+  const settings = next.settings ? [next.settings] : [];
+  await db.transaction((txn) => [
+    txn`DELETE FROM study_blocks`,
+    txn`DELETE FROM daily_fractals`,
+    txn`DELETE FROM study_days`,
+    txn`DELETE FROM subjects`,
+    txn`DELETE FROM tags`,
+    txn`DELETE FROM app_settings`,
+    txn`
+      INSERT INTO subjects (id, archived_at, created_at, data)
+      SELECT item->>'id', item->>'archivedAt', item->>'createdAt', item
+      FROM jsonb_array_elements(${json(next.subjects)}::jsonb) AS item
+    `,
+    txn`
+      INSERT INTO tags (id, archived_at, created_at, data)
+      SELECT item->>'id', item->>'archivedAt', item->>'createdAt', item
+      FROM jsonb_array_elements(${json(next.tags)}::jsonb) AS item
+    `,
+    txn`
+      INSERT INTO study_days (id, date, created_at, data)
+      SELECT item->>'id', item->>'date', item->>'createdAt', item
+      FROM jsonb_array_elements(${json(next.studyDays)}::jsonb) AS item
+    `,
+    txn`
+      INSERT INTO study_blocks (id, day_id, date, subject_id, status, tag_ids, started_at, created_at, data)
+      SELECT
+        item->>'id',
+        item->>'dayId',
+        item->>'date',
+        item->>'subjectId',
+        item->>'status',
+        COALESCE(item->'tagIds', '[]'::jsonb),
+        item->>'startedAt',
+        item->>'createdAt',
+        item
+      FROM jsonb_array_elements(${json(next.studyBlocks)}::jsonb) AS item
+    `,
+    txn`
+      INSERT INTO daily_fractals (id, date, created_at, updated_at, data)
+      SELECT item->>'id', item->>'date', item->>'createdAt', item->>'updatedAt', item
+      FROM jsonb_array_elements(${json(compactFractals)}::jsonb) AS item
+    `,
+    txn`
+      INSERT INTO app_settings (id, data, updated_at)
+      SELECT item->>'id', item, NOW()
+      FROM jsonb_array_elements(${json(settings)}::jsonb) AS item
+    `,
+  ]);
 }
 
 export async function resetLocalData() {
   const db = await readySql();
-  await db`DELETE FROM study_blocks`;
-  await db`DELETE FROM daily_fractals`;
-  await db`DELETE FROM study_days`;
-  await db`DELETE FROM subjects`;
-  await db`DELETE FROM tags`;
-  await db`DELETE FROM app_settings`;
+  await db.transaction((txn) => [
+    txn`DELETE FROM study_blocks`,
+    txn`DELETE FROM daily_fractals`,
+    txn`DELETE FROM study_days`,
+    txn`DELETE FROM subjects`,
+    txn`DELETE FROM tags`,
+    txn`DELETE FROM app_settings`,
+  ]);
 }
 
-export async function getSnapshot(): Promise<AppSnapshot> {
-  const settings = await getSettings();
-  await seedDefaultSubjectsIfEmpty(settings.locale);
-  await seedDefaultTagsIfEmpty(settings.locale);
-  await ensureDailyFractalProgress(localDateKey());
-  const [subjects, tags, today, calendarSummary, allDays, allBlocks, dailyFractals] = await Promise.all([
+export async function getSnapshot(todayKey = localDateKey()): Promise<AppSnapshot> {
+  const [settings, initialSubjects, initialTags, allDays, allBlocks, initialDailyFractals] = await Promise.all([
+    getSettings(),
     listSubjects(),
     listTags(),
-    getTodayDay(),
-    getCalendarSummary(),
     listAllDays(),
     listAllBlocks(),
     listDailyFractals(),
   ]);
+  const seededSubjects = await seedDefaultSubjectsIfEmpty(settings.locale, initialSubjects);
+  const seededTags = await seedDefaultTagsIfEmpty(settings.locale, initialTags);
+  const subjects = [...initialSubjects, ...seededSubjects];
+  const tags = [...initialTags, ...seededTags];
+  const dailyFractals = await ensureDailyFractalProgress({ asOfDate: todayKey, fractals: initialDailyFractals, blocks: allBlocks, days: allDays, subjects, tags });
+  const today = allDays.find((day) => day.date === todayKey) ?? null;
   const todayBlocks = today ? allBlocks.filter((block) => block.date === today.date).sort((a, b) => a.index - b.index) : [];
+  const calendarSummary = buildCalendarSummary(allDays, allBlocks);
   return { settings, subjects, tags, today, todayBlocks, calendarSummary, allDays, allBlocks, dailyFractals };
 }

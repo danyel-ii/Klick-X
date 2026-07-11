@@ -5,9 +5,23 @@ import type { ExportPayload, Locale, StatsFilters, Subject, Tag } from "@/lib/ty
 
 export const dynamic = "force-dynamic";
 
+function requestDateKey(request: Request) {
+  const candidate = request.headers.get("x-study-date");
+  if (!candidate || !/^\d{4}-\d{2}-\d{2}$/.test(candidate)) return undefined;
+  const parsed = new Date(`${candidate}T00:00:00.000Z`);
+  const withinTimezoneBoundary = Math.abs(parsed.getTime() - Date.now()) <= 2 * 86_400_000;
+  return Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== candidate || !withinTimezoneBoundary ? undefined : candidate;
+}
+
 function apiError(error: unknown) {
   const message = error instanceof Error ? error.message : "Database unavailable.";
-  if (message.startsWith("Invalid import payload") || message === "Every planned block needs a subject." || message === "Subject is required." || message === "Active blocks cannot be deleted.") {
+  if (
+    message.startsWith("Invalid import payload") ||
+    message === "Every planned block needs a subject." ||
+    message === "Subject is required." ||
+    message === "Active blocks cannot be deleted." ||
+    message === "Studied blocks cannot be deleted."
+  ) {
     return NextResponse.json({ error: message }, { status: 400 });
   }
   return NextResponse.json({ error: message }, { status: 503 });
@@ -17,7 +31,7 @@ export async function GET(request: Request) {
   if (!(await isAuthorizedRequest(request))) return unauthorized();
 
   try {
-    return NextResponse.json(await repo.getSnapshot());
+    return NextResponse.json(await repo.getSnapshot(requestDateKey(request)));
   } catch (error) {
     return apiError(error);
   }
@@ -86,26 +100,23 @@ export async function POST(request: Request) {
         await repo.deleteBlock(payload?.id as string);
         break;
       case "startBlock":
-        await repo.startBlock(payload?.id as string);
-        break;
+        return NextResponse.json({ blocks: await repo.startBlock(payload?.id as string) });
       case "pauseBlock":
-        await repo.pauseBlock(payload?.id as string);
-        break;
+        return NextResponse.json({ blocks: await repo.pauseBlock(payload?.id as string) });
       case "completeBlock":
-        await repo.completeBlock(payload?.id as string);
-        break;
+        return NextResponse.json(await repo.completeBlock(payload?.id as string));
       case "skipBlock":
-        await repo.skipBlock(payload?.id as string);
-        break;
+        return NextResponse.json({ blocks: await repo.skipBlock(payload?.id as string) });
       case "updateBlockSubject":
-        await repo.updateBlockSubject(payload?.id as string, payload?.subjectId as string);
-        break;
+        return NextResponse.json({ blocks: await repo.updateBlockSubject(payload?.id as string, payload?.subjectId as string) });
       case "updateBlockTags":
-        await repo.updateBlockTags(payload?.id as string, payload?.tagIds as string[]);
-        break;
+        return NextResponse.json({ blocks: await repo.updateBlockTags(payload?.id as string, payload?.tagIds as string[]) });
       case "updateBlockNote":
-        await repo.updateBlockNote(payload?.id as string, payload?.note as string);
-        break;
+        {
+          const block = await repo.updateBlockNote(payload?.id as string, payload?.note as string);
+          if (!block) return NextResponse.json({ error: "Block not found." }, { status: 404 });
+          return NextResponse.json({ block });
+        }
       case "importLocalData":
         await repo.importLocalData(payload?.payload as ExportPayload);
         break;
@@ -117,7 +128,7 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: `Unknown action: ${body.action}` }, { status: 400 });
     }
 
-    return NextResponse.json(await repo.getSnapshot());
+    return NextResponse.json(await repo.getSnapshot(requestDateKey(request)));
   } catch (error) {
     return apiError(error);
   }
@@ -129,7 +140,7 @@ export async function PUT(request: Request) {
   try {
     const filters = (await request.json().catch(() => null)) as StatsFilters | null;
     if (!filters) return NextResponse.json({ error: "Valid filters are required." }, { status: 400 });
-    return NextResponse.json(await repo.getStats(filters));
+    return NextResponse.json(await repo.getStats(filters, requestDateKey(request)));
   } catch (error) {
     return apiError(error);
   }

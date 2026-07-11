@@ -48,7 +48,7 @@ export function FocusScreensaver({
             : {
                 scale: [1, 1.08, 0.98, 1],
                 rotate: [0, 7, -4, 0],
-                borderRadius: ["38% 62% 55% 45% / 45% 42% 58% 55%", "58% 42% 36% 64% / 40% 60% 40% 60%", "42% 58% 62% 38% / 58% 38% 62% 42%", "38% 62% 55% 45% / 45% 42% 58% 55%"],
+                opacity: [0.32, 0.42, 0.35, 0.32],
               }
         }
         transition={{ duration: 12, repeat: Infinity, ease: "easeInOut" }}

@@ -9,7 +9,9 @@ const fallbackPalette = ["var(--color-primary)", "var(--color-secondary)", "var(
 const pageWidth = 210;
 const pageHeight = 297;
 export const artworkStepCount = 24;
-const defaultHatchSpacing = 3;
+export const artworkGeneratorVersion = 2;
+const defaultHatchSpacing = 6;
+const legacyHatchSpacing = 3;
 const geometryEpsilon = 1e-7;
 
 function studiedSeconds(block: StudyBlock) {
@@ -185,35 +187,46 @@ export function generateFractalConfig(params: FractalParams): FractalConfig {
   };
 }
 
-function dateRange(startDate: string, endDate: string) {
-  const dates: string[] = [];
-  let cursor = parseISO(startDate);
-  const end = parseISO(endDate);
-  while (cursor <= end) {
-    dates.push(format(cursor, "yyyy-MM-dd"));
-    cursor = new Date(cursor.getTime() + 86_400_000);
-  }
-  return dates;
-}
-
 function completedBlocksByDate(blocks: StudyBlock[]) {
   const map = new Map<string, StudyBlock[]>();
-  for (const block of blocks) {
-    if (block.status !== "completed") continue;
+  for (const block of orderedCompletedBlocks(blocks)) {
     map.set(block.date, [...(map.get(block.date) ?? []), block]);
   }
   return map;
+}
+
+function completedBlockTimestamp(block: StudyBlock) {
+  return block.completedAt ?? block.updatedAt;
+}
+
+function orderedCompletedBlocks(blocks: StudyBlock[]) {
+  return blocks
+    .filter((block) => block.status === "completed")
+    .sort(
+      (left, right) =>
+        left.date.localeCompare(right.date) ||
+        completedBlockTimestamp(left).localeCompare(completedBlockTimestamp(right)) ||
+        left.id.localeCompare(right.id),
+    );
 }
 
 function studiedBlocksBetween(blocks: StudyBlock[], startDate: string, endDate: string) {
   return blocks.filter((block) => block.date >= startDate && block.date <= endDate && studiedSeconds(block) > 0);
 }
 
-function blocksForArtworkCycle(blocks: StudyBlock[], startDate: string, createdAt: string) {
+function inferCompletionOffset(blocks: StudyBlock[], startDate: string, createdAt: string) {
+  return orderedCompletedBlocks(blocks).filter(
+    (block) => block.date < startDate || (block.date === startDate && completedBlockTimestamp(block) < createdAt),
+  ).length;
+}
+
+function blocksForArtworkCycle(blocks: StudyBlock[], startDate: string, createdAt: string, completionOffset: number) {
+  const eligibleCompletionIds = new Set(orderedCompletedBlocks(blocks).slice(completionOffset).map((block) => block.id));
   return blocks.filter((block) => {
     if (block.date < startDate) return false;
+    if (block.status === "completed") return eligibleCompletionIds.has(block.id);
     if (block.date > startDate) return true;
-    const blockTimestamp = block.completedAt ?? block.updatedAt;
+    const blockTimestamp = completedBlockTimestamp(block);
     return blockTimestamp >= createdAt;
   });
 }
@@ -248,41 +261,91 @@ export function calculateArtworkProgress({
   blocks: StudyBlock[];
 }) {
   const byDate = completedBlocksByDate(blocks);
+  const activityDates = new Set(
+    blocks
+      .filter((block) => block.status === "completed" || studiedSeconds(block) > 0 || (block.status === "active" && Boolean(block.startedAt)))
+      .map((block) => block.date),
+  );
+  activityDates.add(startDate);
   let visibleSteps = 0;
   let completedAt: string | null = null;
+  let completionCount = 0;
+  let cursorDate = startDate;
 
-  for (const date of dateRange(startDate, asOfDate)) {
-    const completedToday = byDate.get(date)?.length ?? 0;
-    if (completedToday > 0) {
-      visibleSteps += completedToday;
-    } else if (date > startDate) {
-      visibleSteps -= 1;
+  const relevantDates = [...activityDates].filter((date) => date >= startDate && date <= asOfDate).sort();
+  dateLoop: for (const date of relevantDates) {
+    const missedDays = Math.max(0, differenceInCalendarDays(parseISO(date), parseISO(cursorDate)) - 1);
+    visibleSteps = Math.max(0, visibleSteps - missedDays);
+    const completedToday = byDate.get(date) ?? [];
+    for (let index = 0; index < completedToday.length; index += 1) {
+      visibleSteps += 1;
+      completionCount += 1;
+      visibleSteps = Math.min(artworkStepCount, visibleSteps);
+      if (visibleSteps >= artworkStepCount) {
+        completedAt = date;
+        break dateLoop;
+      }
     }
-    visibleSteps = Math.max(0, Math.min(artworkStepCount, visibleSteps));
-    if (visibleSteps >= artworkStepCount) {
-      completedAt = date;
-      break;
-    }
+    cursorDate = date;
   }
 
-  return { visibleSteps, completedAt };
+  if (!completedAt) {
+    const trailingMissedDays = Math.max(0, differenceInCalendarDays(parseISO(asOfDate), parseISO(cursorDate)) - 1);
+    visibleSteps = Math.max(0, visibleSteps - trailingMissedDays);
+  }
+
+  return { visibleSteps, completedAt, completionCount };
 }
 
 type CoinSide = "heads" | "tails";
 type CoinToss = ArtworkPoint & { theta: number; side: CoinSide };
 type Triangle = readonly [ArtworkPoint, ArtworkPoint, ArtworkPoint];
 
-function generateCoinPartitionArtwork(seed: string, lineCount: number, hatchSpacing: number): CoinPartitionArtwork {
+export function generateCoinPartitionArtwork(seed: string, lineCount = artworkStepCount, hatchSpacing = defaultHatchSpacing): CoinPartitionArtwork {
+  const random = randomFromSeed(seed);
+  const regions: ArtworkPoint[][] = [[point(0, 0), point(pageWidth, 0), point(pageWidth, pageHeight), point(0, pageHeight)]];
+
+  for (let index = 1; index < lineCount; index += 1) {
+    const selectedIndex = regions.reduce(
+      (largestIndex, region, regionIndex) => (polygonArea(region) > polygonArea(regions[largestIndex] ?? []) ? regionIndex : largestIndex),
+      0,
+    );
+    const selected = regions[selectedIndex];
+    if (!selected) break;
+
+    let pieces: ArtworkPoint[][] = [];
+    for (let attempt = 0; attempt < 8 && pieces.length !== 2; attempt += 1) {
+      pieces = splitConvexPolygon(selected, orientedCoinToss(random, selected));
+    }
+    if (pieces.length !== 2) break;
+    regions.splice(selectedIndex, 1, ...pieces);
+  }
+
+  const faces: ArtworkFace[] = regions.sort(regionSortKey).map((polygon, index) => {
+    const hatchToss = orientedCoinToss(random, polygon);
+    const polarityToss = orientedCoinToss(random, polygon);
+    const colorToss = orientedCoinToss(random, polygon);
+    return {
+      id: index + 1,
+      polygon,
+      hatchSegments: generateHatchesForPolygon(polygon, hatchToss.theta, hatchSpacing),
+      inverted: polarityToss.side === "tails",
+      color: colorFromToss(colorToss),
+    };
+  });
+
+  return { pageWidth, pageHeight, lineCount: faces.length, hatchSpacing, faces };
+}
+
+export function generateLegacyCoinPartitionArtwork(seed: string, lineCount = artworkStepCount, hatchSpacing = legacyHatchSpacing): CoinPartitionArtwork {
   const random = randomFromSeed(seed);
   let regions: ArtworkPoint[][] = [[point(0, 0), point(pageWidth, 0), point(pageWidth, pageHeight), point(0, pageHeight)]];
+  const page = [point(0, 0), point(pageWidth, 0), point(pageWidth, pageHeight), point(0, pageHeight)];
 
   for (let index = 0; index < lineCount; index += 1) {
-    const toss = orientedCoinToss(random, [point(0, 0), point(pageWidth, 0), point(pageWidth, pageHeight), point(0, pageHeight)]);
+    const toss = orientedCoinToss(random, page);
     const nextRegions: ArtworkPoint[][] = [];
-    for (const region of regions) {
-      const pieces = splitConvexPolygon(region, toss);
-      nextRegions.push(...pieces);
-    }
+    for (const region of regions) nextRegions.push(...splitConvexPolygon(region, toss));
     regions = nextRegions.sort(regionSortKey);
   }
 
@@ -546,6 +609,7 @@ export function buildDailyFractal({
   subjects,
   tags,
   now,
+  completionOffset,
 }: {
   existing?: DailyFractal | null;
   date: string;
@@ -554,29 +618,81 @@ export function buildDailyFractal({
   subjects: Subject[];
   tags: Tag[];
   now: string;
+  completionOffset?: number;
 }): DailyFractal {
   const startDate = existing?.startDate ?? existing?.date ?? date;
   const createdAt = existing?.createdAt ?? now;
-  const cycleBlocks = blocksForArtworkCycle(blocks, startDate, createdAt);
-  const params = buildFractalParams({ date: startDate, blocks: cycleBlocks, subjects, tags });
-  const { visibleSteps, completedAt } = existing?.status === "completed" && existing.endDate
-    ? { visibleSteps: existing.visibleSteps ?? artworkStepCount, completedAt: existing.endDate }
+  const resolvedCompletionOffset = existing?.completionOffset ?? completionOffset ?? inferCompletionOffset(blocks, startDate, createdAt);
+  const cycleBlocks = blocksForArtworkCycle(blocks, startDate, createdAt, resolvedCompletionOffset);
+  const { visibleSteps, completedAt, completionCount } = existing?.status === "completed" && existing.endDate
+    ? {
+        visibleSteps: existing.visibleSteps ?? artworkStepCount,
+        completedAt: existing.endDate,
+        completionCount: existing.completionCount ?? 0,
+      }
     : calculateArtworkProgress({ startDate, asOfDate, blocks: cycleBlocks });
+  const accountedCompletionIds = new Set(orderedCompletedBlocks(cycleBlocks).slice(0, completionCount).map((block) => block.id));
+  const accountedBlocks = cycleBlocks.filter((block) => block.status !== "completed" || accountedCompletionIds.has(block.id));
+  const params = buildFractalParams({ date: startDate, blocks: accountedBlocks, subjects, tags });
   const status = completedAt ? "completed" : "active";
   const endDate = completedAt;
+  const seed = existing?.seed ?? params.seed;
+  const stableParams = existing?.params ?? params;
+  const config = existing?.config ?? generateFractalConfig(params);
   return {
     id: existing?.id ?? `fractal_${startDate}_${hashString(now).toString(16)}`,
     date: startDate,
+    generatorVersion: existing?.generatorVersion ?? (existing ? 1 : artworkGeneratorVersion),
     startDate,
     endDate,
     status,
     totalSteps: artworkStepCount,
     visibleSteps: status === "completed" ? artworkStepCount : visibleSteps,
-    stats: buildArtworkStats(cycleBlocks, startDate, endDate ?? asOfDate),
-    seed: params.seed,
-    params,
-    config: generateFractalConfig(params),
+    completionOffset: resolvedCompletionOffset,
+    completionCount,
+    stats: buildArtworkStats(accountedBlocks, startDate, endDate ?? asOfDate),
+    seed,
+    params: stableParams,
+    config,
     createdAt,
-    updatedAt: now,
+    updatedAt: existing?.updatedAt && existing.updatedAt > now ? existing.updatedAt : now,
   };
+}
+
+export function nextArtworkCompletionOffset(fractals: DailyFractal[], blocks: StudyBlock[]) {
+  let nextOffset: number | undefined;
+  let legacyCutoff: string | undefined;
+
+  for (const fractal of fractals) {
+    if (fractal.status !== "completed") continue;
+    if (fractal.completionOffset !== undefined && fractal.completionCount !== undefined) {
+      nextOffset = Math.max(nextOffset ?? 0, fractal.completionOffset + fractal.completionCount);
+    } else if (!legacyCutoff || fractal.updatedAt > legacyCutoff) {
+      legacyCutoff = fractal.updatedAt;
+    }
+  }
+
+  if (legacyCutoff) {
+    const legacyOffset = orderedCompletedBlocks(blocks).filter((block) => completedBlockTimestamp(block) <= legacyCutoff).length;
+    nextOffset = Math.max(nextOffset ?? 0, legacyOffset);
+  }
+
+  return nextOffset;
+}
+
+export function artworkCompletionAtOffset(blocks: StudyBlock[], offset: number) {
+  return orderedCompletedBlocks(blocks)[offset];
+}
+
+export function compactDailyFractal(fractal: DailyFractal): DailyFractal {
+  if (!fractal.config.artwork) return fractal;
+  return { ...fractal, config: { ...fractal.config, artwork: undefined } };
+}
+
+export function materializeDailyFractalArtwork(fractal: DailyFractal): CoinPartitionArtwork {
+  if (fractal.config.artwork) return fractal.config.artwork;
+  const seed = fractal.config.seed || fractal.seed;
+  return (fractal.generatorVersion ?? 1) >= artworkGeneratorVersion
+    ? generateCoinPartitionArtwork(seed)
+    : generateLegacyCoinPartitionArtwork(seed);
 }

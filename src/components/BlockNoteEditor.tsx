@@ -14,7 +14,7 @@ export function BlockNoteEditor({ value, onCommit, debounceMs = 900, ...props }:
   const draftRef = useRef(value);
   const onCommitRef = useRef(onCommit);
   const latestValueRef = useRef(value);
-  const lastCommittedRef = useRef(value);
+  const lastSubmittedRef = useRef(value);
   const timeoutRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -22,7 +22,7 @@ export function BlockNoteEditor({ value, onCommit, debounceMs = 900, ...props }:
   }, [onCommit]);
 
   const clearPendingCommit = useCallback(() => {
-    if (!timeoutRef.current) return;
+    if (timeoutRef.current === null) return;
     window.clearTimeout(timeoutRef.current);
     timeoutRef.current = null;
   }, []);
@@ -30,8 +30,8 @@ export function BlockNoteEditor({ value, onCommit, debounceMs = 900, ...props }:
   const commit = useCallback(
     (nextValue: string) => {
       clearPendingCommit();
-      if (nextValue === lastCommittedRef.current) return;
-      lastCommittedRef.current = nextValue;
+      if (nextValue === lastSubmittedRef.current) return;
+      lastSubmittedRef.current = nextValue;
       onCommitRef.current(nextValue);
     },
     [clearPendingCommit],
@@ -39,14 +39,23 @@ export function BlockNoteEditor({ value, onCommit, debounceMs = 900, ...props }:
 
   useEffect(() => {
     if (value === latestValueRef.current) return;
+    const previousValue = latestValueRef.current;
     latestValueRef.current = value;
-    lastCommittedRef.current = value;
+
+    if (value === draftRef.current) {
+      return;
+    }
+
+    const editorWasClean = draftRef.current === previousValue && lastSubmittedRef.current === previousValue;
+    if (!editorWasClean) return;
+
+    lastSubmittedRef.current = value;
     draftRef.current = value;
     setDraft(value);
   }, [value]);
 
   useEffect(() => {
-    if (draft === lastCommittedRef.current) return;
+    if (draft === lastSubmittedRef.current) return;
     clearPendingCommit();
     timeoutRef.current = window.setTimeout(() => commit(draft), debounceMs);
     return clearPendingCommit;
@@ -58,10 +67,11 @@ export function BlockNoteEditor({ value, onCommit, debounceMs = 900, ...props }:
     <Textarea
       {...props}
       value={draft}
-      onBlur={() => commit(draft)}
+      onBlur={() => commit(draftRef.current)}
       onChange={(event) => {
-        draftRef.current = event.target.value;
-        setDraft(event.target.value);
+        const nextValue = event.target.value;
+        draftRef.current = nextValue;
+        setDraft(nextValue);
       }}
     />
   );

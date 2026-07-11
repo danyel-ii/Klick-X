@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildStatsSummary, calculateStreaks, completionRate } from "./analytics";
+import { buildCalendarSummary, buildStatsSummary, calculateStreaks, completionRate } from "./analytics";
 import type { StudyBlock, StudyDay, Subject, Tag } from "./types";
 
 const subjects: Subject[] = [
@@ -34,6 +34,13 @@ describe("analytics", () => {
 
   it("calculates current and longest streaks from studied days", () => {
     expect(calculateStreaks(blocks, "2026-05-21")).toEqual({ currentStreak: 2, longestStreak: 2 });
+  });
+
+  it("builds calendar totals in date order with a single block pass", () => {
+    expect(buildCalendarSummary([...days].reverse(), blocks)).toEqual([
+      { date: "2026-05-20", plannedBlocks: 2, completedBlocks: 1, studiedSeconds: 1800 },
+      { date: "2026-05-21", plannedBlocks: 1, completedBlocks: 1, studiedSeconds: 1200 },
+    ]);
   });
 
   it("builds subject, tag, notes, and totals from real blocks", () => {

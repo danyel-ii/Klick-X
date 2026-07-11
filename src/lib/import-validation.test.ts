@@ -77,6 +77,18 @@ function validPayload(): ExportPayload {
 }
 
 describe("normalizeExportPayload", () => {
+  it("normalizes legacy exports to one active timer", () => {
+    const payload = validPayload();
+    const first = { ...payload.studyBlocks[0]!, status: "active" as const, startedAt: "2026-05-22T11:00:00.000Z" };
+    const second = { ...first, id: "block_newer", index: 1, startedAt: "2026-05-22T11:30:00.000Z" };
+
+    const normalized = normalizeExportPayload({ ...payload, studyBlocks: [first, second] });
+
+    expect(normalized.studyBlocks.filter((block) => block.status === "active")).toHaveLength(1);
+    expect(normalized.studyBlocks.find((block) => block.id === "block_newer")?.status).toBe("active");
+    expect(normalized.studyBlocks.find((block) => block.id === first.id)).toMatchObject({ status: "paused", startedAt: null });
+  });
+
   it("normalizes a valid export payload", () => {
     const normalized = normalizeExportPayload(validPayload());
 
@@ -149,11 +161,27 @@ describe("normalizeExportPayload", () => {
         updatedAt: now,
       },
     ];
+    const olderActive = { ...payload.dailyFractals[0]!, status: "active" as const, updatedAt: "2026-05-22T11:00:00.000Z" };
+    const newerActive = {
+      ...olderActive,
+      id: "fractal_2026-05-22_newer",
+      completionOffset: 4,
+      completionCount: 2,
+      updatedAt: now,
+    };
+    payload.dailyFractals = [olderActive, newerActive];
 
     const normalized = normalizeExportPayload(payload);
 
     expect(normalized.dailyFractals[0]?.config.artwork?.lineCount).toBe(5);
     expect(normalized.dailyFractals[0]?.config.artwork?.faces[0]?.hatchSegments).toHaveLength(1);
+    expect(normalized.dailyFractals.filter((fractal) => fractal.status === "active")).toHaveLength(1);
+    expect(normalized.dailyFractals.find((fractal) => fractal.id === newerActive.id)).toMatchObject({
+      status: "active",
+      completionOffset: 4,
+      completionCount: 2,
+    });
+    expect(normalized.dailyFractals.find((fractal) => fractal.id === olderActive.id)).toBeUndefined();
   });
 
   it("rejects malformed payloads before import", () => {

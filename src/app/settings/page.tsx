@@ -2,6 +2,7 @@
 
 import { ChangeEvent, useRef, useState } from "react";
 import { ArchiveRestore, BellRing, Download, LogOut, Pencil, RotateCcw, Trash2, Upload, X } from "lucide-react";
+import { ScreensaverDelayInput } from "@/components/ScreensaverDelayInput";
 import { Button, Input, PageHeader, SurfaceCard, TagPill, SubjectPill } from "@/components/ui";
 import { resolveSubjectColor, resolveTagColor, subjectColorOptions, tagThemeColorOptions, tagThemeColorValues } from "@/lib/colors";
 import { requestLockScreenNotificationPermission, supportsLockScreenTimerNotifications } from "@/lib/lock-screen-notifications";
@@ -43,6 +44,7 @@ export default function SettingsPage() {
   const activeTags = tags.filter((tag) => !tag.archivedAt);
   const archivedSubjects = subjects.filter((subject) => subject.archivedAt);
   const archivedTags = tags.filter((tag) => tag.archivedAt);
+  const screensaverDelay = settings?.screensaverDelaySeconds ?? 180;
 
   async function handleExport() {
     const payload = await exportLocalData();
@@ -249,7 +251,11 @@ export default function SettingsPage() {
             </label>
             <label className="grid gap-1 text-sm font-semibold">
               {t.settings.delay}
-              <Input type="number" min={30} value={settings?.screensaverDelaySeconds ?? 180} onChange={(event) => void updateSettings({ screensaverDelaySeconds: Number(event.target.value) })} />
+              <ScreensaverDelayInput
+                key={screensaverDelay}
+                value={screensaverDelay}
+                onCommit={(value) => void updateSettings({ screensaverDelaySeconds: value })}
+              />
             </label>
             <label className="flex items-start gap-3 text-sm font-semibold sm:col-span-2">
               <input

@@ -1,9 +1,10 @@
 import Dexie, { type Table } from "dexie";
-import { buildStatsSummary } from "./analytics";
+import { buildCalendarSummary, buildStatsSummary } from "./analytics";
 import { defaultTagColorValues, resolveSubjectColor, resolveTagColor, subjectColorValues } from "./colors";
 import { detectLocale } from "./i18n";
 import { localDateKey } from "./date";
-import { buildDailyFractal } from "./fractals";
+import { artworkCompletionAtOffset, buildDailyFractal, compactDailyFractal, nextArtworkCompletionOffset } from "./fractals";
+import { hasSameDailyFractalContent, isDailyFractalCurrent } from "./fractal-persistence";
 import { normalizeExportPayload } from "./import-validation";
 import { accumulateElapsed } from "./timer";
 import type {
@@ -301,6 +302,7 @@ export async function deleteBlock(blockId: string) {
     const block = await db.studyBlocks.get(blockId);
     if (!block) return;
     if (block.status === "active") throw new Error("Active blocks cannot be deleted.");
+    if (block.status === "completed" || block.elapsedSeconds > 0 || block.completedAt) throw new Error("Studied blocks cannot be deleted.");
     await db.studyBlocks.delete(blockId);
     const remainingBlocks = await db.studyBlocks.where("date").equals(block.date).sortBy("index");
     await Promise.all(remainingBlocks.map((item, index) => db.studyBlocks.update(item.id, { index, updatedAt: now })));
@@ -314,8 +316,7 @@ async function pauseActiveBlocks(exceptId?: string) {
   const now = new Date();
   for (const block of activeBlocks) {
     if (block.id === exceptId) continue;
-    await db.studyBlocks.put({
-      ...block,
+    await db.studyBlocks.update(block.id, {
       status: "paused",
       elapsedSeconds: accumulateElapsed(block, now),
       startedAt: null,
@@ -326,20 +327,21 @@ async function pauseActiveBlocks(exceptId?: string) {
 
 export async function startBlock(blockId: string) {
   await db.transaction("rw", db.studyBlocks, async () => {
-    await pauseActiveBlocks(blockId);
     const block = await db.studyBlocks.get(blockId);
     if (!block) return;
+    if (block.status === "completed" || block.status === "skipped" || block.status === "active") return;
+    await pauseActiveBlocks(blockId);
     const now = nowIso();
-    await db.studyBlocks.put({ ...block, status: "active", startedAt: now, updatedAt: now });
+    await db.studyBlocks.update(block.id, { status: "active", startedAt: now, updatedAt: now });
   });
 }
 
 export async function pauseBlock(blockId: string) {
   const block = await db.studyBlocks.get(blockId);
   if (!block) return;
+  if (block.status !== "active") return;
   const now = new Date();
-  await db.studyBlocks.put({
-    ...block,
+  await db.studyBlocks.update(block.id, {
     status: "paused",
     elapsedSeconds: accumulateElapsed(block, now),
     startedAt: null,
@@ -350,10 +352,10 @@ export async function pauseBlock(blockId: string) {
 export async function completeBlock(blockId: string) {
   const block = await db.studyBlocks.get(blockId);
   if (!block) return;
+  if (block.status === "completed" || block.status === "skipped") return;
   const now = new Date();
   await db.transaction("rw", [db.studyBlocks, db.dailyFractals, db.subjects, db.tags], async () => {
-    await db.studyBlocks.put({
-      ...block,
+    await db.studyBlocks.update(block.id, {
       status: "completed",
       elapsedSeconds: accumulateElapsed(block, now),
       startedAt: null,
@@ -365,34 +367,78 @@ export async function completeBlock(blockId: string) {
 }
 
 async function upsertDailyFractal(date: string, now: string) {
-  const [activeFractals, blocks, subjects, tags] = await Promise.all([
-    db.dailyFractals.filter((fractal) => fractal.status === "active").toArray(),
+  const [fractals, blocks, subjects, tags] = await Promise.all([
+    db.dailyFractals.toArray(),
     db.studyBlocks.toArray(),
     db.subjects.toArray(),
     db.tags.toArray(),
   ]);
-  const existing = activeFractals.sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0] ?? null;
-  await db.dailyFractals.put(buildDailyFractal({ existing, date: existing?.startDate ?? date, asOfDate: date, blocks, subjects, tags, now }));
+  const existing = fractals.filter((fractal) => fractal.status === "active").sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0] ?? null;
+  const nextCompletionOffset = nextArtworkCompletionOffset(fractals, blocks);
+  const next = buildDailyFractal({
+    existing,
+    date: existing?.startDate ?? date,
+    asOfDate: date,
+    blocks,
+    subjects,
+    tags,
+    now,
+    completionOffset: existing ? nextCompletionOffset : (nextCompletionOffset ?? 0),
+  });
+  const compactNext = compactDailyFractal(next);
+  if (!existing || existing.config.artwork || !hasSameDailyFractalContent(compactDailyFractal(existing), compactNext)) {
+    await db.dailyFractals.put(compactNext);
+  }
 }
 
 export async function ensureDailyFractalProgress(asOfDate = localDateKey()) {
-  const [activeFractals, blocks, subjects, tags] = await Promise.all([
-    db.dailyFractals.filter((fractal) => fractal.status === "active").toArray(),
+  const [fractals, blocks, days, subjects, tags] = await Promise.all([
+    db.dailyFractals.toArray(),
     db.studyBlocks.toArray(),
+    db.studyDays.toArray(),
     db.subjects.toArray(),
     db.tags.toArray(),
   ]);
-  const existing = activeFractals.sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
-  if (!existing) return;
-  await db.dailyFractals.put(buildDailyFractal({ existing, date: existing.startDate ?? existing.date, asOfDate, blocks, subjects, tags, now: nowIso() }));
+  const existing = fractals.filter((fractal) => fractal.status === "active").sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
+  const completionOffset = nextArtworkCompletionOffset(fractals, blocks) ?? 0;
+  if (!existing) {
+    const firstUnconsumedCompletion = artworkCompletionAtOffset(blocks, completionOffset);
+    if (!firstUnconsumedCompletion || firstUnconsumedCompletion.date > asOfDate) return;
+    const next = buildDailyFractal({
+      date: firstUnconsumedCompletion.date,
+      asOfDate,
+      blocks,
+      subjects,
+      tags,
+      now: nowIso(),
+      completionOffset,
+    });
+    await db.dailyFractals.put(compactDailyFractal(next));
+    return;
+  }
+  const compactExisting = compactDailyFractal(existing);
+  if (existing.config.artwork) await db.dailyFractals.put(compactExisting);
+  if (isDailyFractalCurrent(compactExisting, asOfDate, [...blocks, ...days])) return;
+  const next = buildDailyFractal({
+    existing: compactExisting,
+    date: compactExisting.startDate ?? compactExisting.date,
+    asOfDate,
+    blocks,
+    subjects,
+    tags,
+    now: nowIso(),
+    completionOffset,
+  });
+  const compactNext = compactDailyFractal(next);
+  if (!hasSameDailyFractalContent(compactExisting, compactNext)) await db.dailyFractals.put(compactNext);
 }
 
 export async function skipBlock(blockId: string) {
   const block = await db.studyBlocks.get(blockId);
   if (!block) return;
+  if (block.status === "completed" || block.status === "skipped") return;
   const now = new Date();
-  await db.studyBlocks.put({
-    ...block,
+  await db.studyBlocks.update(block.id, {
     status: "skipped",
     elapsedSeconds: accumulateElapsed(block, now),
     startedAt: null,
@@ -412,20 +458,17 @@ export async function updateBlockNote(blockId: string, note: string) {
   await db.studyBlocks.update(blockId, { note, updatedAt: nowIso() });
 }
 
+export async function cacheRemoteDelta(blocks: StudyBlock[], dailyFractals: DailyFractal[] = []) {
+  if (!blocks.length && !dailyFractals.length) return;
+  await db.transaction("rw", [db.studyBlocks, db.dailyFractals], async () => {
+    if (blocks.length) await db.studyBlocks.bulkPut(blocks);
+    if (dailyFractals.length) await db.dailyFractals.bulkPut(dailyFractals.map(compactDailyFractal));
+  });
+}
+
 export async function getCalendarSummary(): Promise<CalendarDaySummary[]> {
-  const days = await db.studyDays.toArray();
-  const blocks = await db.studyBlocks.toArray();
-  return days
-    .map((day) => {
-      const dayBlocks = blocks.filter((block) => block.date === day.date);
-      return {
-        date: day.date,
-        plannedBlocks: day.plannedBlockCount,
-        completedBlocks: dayBlocks.filter((block) => block.status === "completed").length,
-        studiedSeconds: dayBlocks.reduce((sum, block) => sum + block.elapsedSeconds, 0),
-      };
-    })
-    .sort((a, b) => a.date.localeCompare(b.date));
+  const [days, blocks] = await Promise.all([db.studyDays.toArray(), db.studyBlocks.toArray()]);
+  return buildCalendarSummary(days, blocks);
 }
 
 export async function getStats(filters: StatsFilters): Promise<StatsSummary> {
@@ -458,7 +501,7 @@ export async function importLocalData(payload: ExportPayload) {
     await db.tags.bulkPut(next.tags.map((tag) => ({ ...tag, color: resolveTagColor(tag.color) })));
     await db.studyDays.bulkPut(next.studyDays);
     await db.studyBlocks.bulkPut(next.studyBlocks);
-    await db.dailyFractals.bulkPut(next.dailyFractals);
+    await db.dailyFractals.bulkPut(next.dailyFractals.map(compactDailyFractal));
     if (next.settings) await db.settings.put(next.settings);
   });
 }

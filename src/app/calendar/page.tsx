@@ -3,7 +3,7 @@
 import { addMonths, format, isSameMonth, subMonths } from "date-fns";
 import { ChevronLeft, ChevronRight, GalleryHorizontal, Minus, Plus } from "lucide-react";
 import { useMemo, useState } from "react";
-import { DailyFractalCanvas } from "@/components/DailyFractalCanvas";
+import { DailyFractalCanvas, LazyDailyFractalCanvas } from "@/components/DailyFractalCanvas";
 import { Button, PageHeader, SubjectPill, SurfaceCard, TagPill } from "@/components/ui";
 import { calendarMonthDays, formatDate, isToday, localDateKey } from "@/lib/date";
 import { useAppStore } from "@/lib/store";
@@ -24,7 +24,7 @@ export default function CalendarPage() {
   const selectedBlocks = allBlocks.filter((block) => block.date === selected).sort((a, b) => a.index - b.index);
   const activeSubjects = subjects.filter((subject) => !subject.archivedAt);
   const activeTags = tags.filter((tag) => !tag.archivedAt);
-  const artworks = useMemo(() => (dailyFractals ?? []).filter((fractal) => fractal.config.artwork).sort((a, b) => (b.startDate ?? b.date).localeCompare(a.startDate ?? a.date)), [dailyFractals]);
+  const artworks = useMemo(() => [...(dailyFractals ?? [])].sort((a, b) => (b.startDate ?? b.date).localeCompare(a.startDate ?? a.date)), [dailyFractals]);
   const selectedFractal = artworks.find((fractal) => {
     const startDate = fractal.startDate ?? fractal.date;
     const endDate = fractal.endDate ?? localDateKey();
@@ -171,7 +171,7 @@ export default function CalendarPage() {
                     selected >= startDate && selected <= (fractal.endDate ?? localDateKey()) ? "border-[var(--accent)]" : "border-[var(--app-border)]"
                   }`}
                 >
-                  <DailyFractalCanvas fractal={fractal} label={`${t.calendar.fractalForDay} ${formatDate(startDate, settings?.locale ?? "en")}`} className="min-h-36" />
+                  <LazyDailyFractalCanvas fractal={fractal} label={`${t.calendar.fractalForDay} ${formatDate(startDate, settings?.locale ?? "en")}`} className="min-h-36" />
                   <div className="mt-2 grid gap-1 px-1 text-xs text-[var(--muted)]">
                     <div className="flex items-center justify-between gap-2">
                       <span className="font-semibold text-[var(--foreground)]">{formatDate(startDate, settings?.locale ?? "en")}</span>

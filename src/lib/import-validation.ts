@@ -320,11 +320,14 @@ function normalizeDailyFractal(value: unknown) {
   return {
     id: stringValue(item.id, "dailyFractal.id", maxIdLength),
     date: dateValue(item.date, "dailyFractal.date"),
+    generatorVersion: item.generatorVersion === undefined ? undefined : integerValue(item.generatorVersion, "dailyFractal.generatorVersion", 1, 100),
     startDate: item.startDate === undefined ? undefined : dateValue(item.startDate, "dailyFractal.startDate"),
     endDate: nullableString(item.endDate, "dailyFractal.endDate", 80),
     status: normalizeArtworkStatus(item.status),
     totalSteps: item.totalSteps === undefined ? undefined : integerValue(item.totalSteps, "dailyFractal.totalSteps", 1, 256),
     visibleSteps: item.visibleSteps === undefined ? undefined : integerValue(item.visibleSteps, "dailyFractal.visibleSteps", 0, 256),
+    completionOffset: item.completionOffset === undefined ? undefined : integerValue(item.completionOffset, "dailyFractal.completionOffset", 0, 1_000_000),
+    completionCount: item.completionCount === undefined ? undefined : integerValue(item.completionCount, "dailyFractal.completionCount", 0, 1_000_000),
     stats: normalizeArtworkStats(item.stats),
     seed: stringValue(item.seed, "dailyFractal.seed", 500),
     params: normalizeFractalParams(item.params),
@@ -345,9 +348,21 @@ export function normalizeExportPayload(payload: unknown): ExportPayload {
   const subjects = array(root.subjects, "subjects").map(normalizeSubject);
   const tags = array(root.tags, "tags").map(normalizeTag);
   const studyDays = array(root.studyDays, "studyDays").map(normalizeDay);
-  const studyBlocks = array(root.studyBlocks, "studyBlocks").map(normalizeBlock);
-  const dailyFractals = (Array.isArray(root.dailyFractals) ? root.dailyFractals : []).map(normalizeDailyFractal);
-  const recordCount = subjects.length + tags.length + studyDays.length + studyBlocks.length + dailyFractals.length;
+  const parsedStudyBlocks = array(root.studyBlocks, "studyBlocks").map(normalizeBlock);
+  const activeBlocks = parsedStudyBlocks
+    .filter((block) => block.status === "active")
+    .sort((left, right) => (right.startedAt ?? right.updatedAt).localeCompare(left.startedAt ?? left.updatedAt) || right.id.localeCompare(left.id));
+  const activeBlockId = activeBlocks[0]?.id;
+  const studyBlocks = parsedStudyBlocks.map((block) =>
+    block.status === "active" && block.id !== activeBlockId ? { ...block, status: "paused" as const, startedAt: null } : block,
+  );
+  const parsedDailyFractals = (Array.isArray(root.dailyFractals) ? root.dailyFractals : []).map(normalizeDailyFractal);
+  const activeFractals = parsedDailyFractals
+    .filter((fractal) => fractal.status === "active")
+    .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt) || right.createdAt.localeCompare(left.createdAt) || right.id.localeCompare(left.id));
+  const activeFractalId = activeFractals[0]?.id;
+  const dailyFractals = parsedDailyFractals.filter((fractal) => fractal.status !== "active" || fractal.id === activeFractalId);
+  const recordCount = subjects.length + tags.length + studyDays.length + studyBlocks.length + parsedDailyFractals.length;
   if (recordCount > maxImportRecords) fail("too many records");
 
   assertUnique(subjects.map((subject) => subject.id), "subject.id");
@@ -355,7 +370,11 @@ export function normalizeExportPayload(payload: unknown): ExportPayload {
   assertUnique(studyDays.map((day) => day.id), "studyDay.id");
   assertUnique(studyDays.map((day) => day.date), "studyDay.date");
   assertUnique(studyBlocks.map((block) => block.id), "studyBlock.id");
-  assertUnique(dailyFractals.map((fractal) => fractal.id), "dailyFractal.id");
+  assertUnique(parsedDailyFractals.map((fractal) => fractal.id), "dailyFractal.id");
+  assertUnique(
+    dailyFractals.flatMap((fractal) => (fractal.completionOffset === undefined ? [] : [String(fractal.completionOffset)])),
+    "dailyFractal.completionOffset",
+  );
 
   return {
     version: 1,

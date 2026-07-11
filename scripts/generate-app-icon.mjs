@@ -5,10 +5,12 @@ import sharp from "sharp";
 const size = 512;
 const radius = 112;
 const lineCount = 24;
-const hatchSpacing = 7;
+const hatchSpacing = 13;
 const geometryEpsilon = 1e-7;
 const seed = "study-blocks:coin-partition-app-icon:v1:24-lines";
-const palette = ["#2563eb", "#16a34a", "#7c3aed", "#d97706", "#0891b2", "#db2777", "#65a30d", "#4f46e5"];
+const black = "#000000";
+const white = "#ffffff";
+const palette = [white, black];
 
 function hashString(value) {
   let hash = 2166136261;
@@ -80,12 +82,39 @@ function polygonBounds(polygon) {
   };
 }
 
-function samplePointInConvexPolygon() {
-  return point(56 + random() * 400, 56 + random() * 400);
+function samplePointInConvexPolygon(polygon) {
+  const origin = polygon[0];
+  if (!origin || polygon.length < 3) return centroid(polygon);
+  const triangles = polygon.slice(1, -1).flatMap((vertex, index) => {
+    const next = polygon[index + 2];
+    return next ? [[origin, vertex, next]] : [];
+  });
+  const weights = triangles.map(([a, b, c]) => Math.abs(cross(subtract(b, a), subtract(c, a))) / 2);
+  const total = weights.reduce((sum, value) => sum + value, 0);
+  const fallbackTriangle = triangles[triangles.length - 1];
+  if (total <= geometryEpsilon || !fallbackTriangle) return centroid(polygon);
+
+  let target = random() * total;
+  let selected = fallbackTriangle;
+  for (let index = 0; index < triangles.length; index += 1) {
+    target -= weights[index];
+    if (target <= 0) {
+      selected = triangles[index];
+      break;
+    }
+  }
+  const [a, b, c] = selected;
+  let r1 = random();
+  let r2 = random();
+  if (r1 + r2 > 1) {
+    r1 = 1 - r1;
+    r2 = 1 - r2;
+  }
+  return point(a.x + r1 * (b.x - a.x) + r2 * (c.x - a.x), a.y + r1 * (b.y - a.y) + r2 * (c.y - a.y));
 }
 
-function orientedCoinToss() {
-  const sampled = samplePointInConvexPolygon();
+function orientedCoinToss(polygon) {
+  const sampled = samplePointInConvexPolygon(polygon);
   return {
     ...sampled,
     theta: random() * Math.PI,
@@ -215,22 +244,33 @@ function polygonPath(points) {
 }
 
 function generateArtwork() {
-  let regions = [[point(36, 36), point(476, 36), point(476, 476), point(36, 476)]];
+  const regions = [[point(36, 36), point(476, 36), point(476, 476), point(36, 476)]];
 
-  for (let index = 0; index < lineCount; index += 1) {
-    const toss = orientedCoinToss();
-    const nextRegions = [];
-    for (const region of regions) nextRegions.push(...splitConvexPolygon(region, toss));
-    regions = nextRegions.sort(regionSortKey);
+  for (let index = 1; index < lineCount; index += 1) {
+    const selectedIndex = regions.reduce(
+      (largestIndex, region, regionIndex) => (polygonArea(region) > polygonArea(regions[largestIndex] ?? []) ? regionIndex : largestIndex),
+      0,
+    );
+    const selected = regions[selectedIndex];
+    if (!selected) break;
+    let pieces = [];
+    for (let attempt = 0; attempt < 8 && pieces.length !== 2; attempt += 1) {
+      pieces = splitConvexPolygon(selected, orientedCoinToss(selected));
+    }
+    if (pieces.length !== 2) break;
+    regions.splice(selectedIndex, 1, ...pieces);
   }
 
-  return regions.map((polygon, index) => ({
-    id: index + 1,
-    polygon,
-    color: palette[index % palette.length],
-    inverted: index % 5 === 0,
-    hatchSegments: generateHatchesForPolygon(polygon, orientedCoinToss().theta),
-  }));
+  return regions.sort(regionSortKey).map((polygon, index) => {
+    const color = palette[index % palette.length];
+    return {
+      id: index + 1,
+      polygon,
+      color,
+      inverted: color === black,
+      hatchSegments: generateHatchesForPolygon(polygon, orientedCoinToss(polygon).theta),
+    };
+  });
 }
 
 function svg() {
@@ -238,31 +278,25 @@ function svg() {
   const paths = faces
     .map((face) => {
       const d = polygonPath(face.polygon);
-      const stroke = face.inverted ? "#f8fafc" : "#020617";
-      const fillOpacity = face.inverted ? "0.96" : "0.82";
-      const hatches = face.hatchSegments
+      const stroke = face.inverted ? white : black;
+      const hatchPath = face.hatchSegments
         .filter((_, index) => index % 2 === 0)
-        .map((segment) => `<path d="M ${fmt(segment.a.x)} ${fmt(segment.a.y)} L ${fmt(segment.b.x)} ${fmt(segment.b.y)}" fill="none" stroke="${stroke}" stroke-width="1.25" stroke-linecap="round" opacity="0.46"/>`)
-        .join("");
-      return `<g><path d="${d}" fill="${face.color}" fill-opacity="${fillOpacity}"/><path d="${d}" fill="none" stroke="${stroke}" stroke-width="1.35" opacity="0.72"/>${hatches}</g>`;
+        .map((segment) => `M ${fmt(segment.a.x)} ${fmt(segment.a.y)} L ${fmt(segment.b.x)} ${fmt(segment.b.y)}`)
+        .join(" ");
+      const hatches = hatchPath ? `<path d="${hatchPath}" fill="none" stroke="${stroke}" stroke-width="1.25" stroke-linecap="round"/>` : "";
+      return `<g><path d="${d}" fill="${face.color}"/><path d="${d}" fill="none" stroke="${stroke}" stroke-width="1.35"/>${hatches}</g>`;
     })
     .join("");
 
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${size} ${size}" role="img" aria-labelledby="title">
-  <title id="title">Study Blocks coin-partition artwork icon</title>
+  <title id="title">Study Blocks black and white coin-partition artwork icon</title>
   <defs>
     <clipPath id="rounded"><rect width="${size}" height="${size}" rx="${radius}" ry="${radius}"/></clipPath>
-    <radialGradient id="glow" cx="32%" cy="18%" r="82%">
-      <stop offset="0%" stop-color="#1e40af"/>
-      <stop offset="58%" stop-color="#020617"/>
-      <stop offset="100%" stop-color="#020617"/>
-    </radialGradient>
   </defs>
   <g clip-path="url(#rounded)">
-    <rect width="${size}" height="${size}" fill="url(#glow)"/>
-    <rect x="24" y="24" width="464" height="464" rx="96" fill="#f8fafc" opacity="0.08"/>
+    <rect width="${size}" height="${size}" fill="${black}"/>
     <g>${paths}</g>
-    <rect x="36" y="36" width="440" height="440" rx="86" fill="none" stroke="#f8fafc" stroke-opacity="0.2" stroke-width="8"/>
+    <rect x="36" y="36" width="440" height="440" rx="86" fill="none" stroke="${white}" stroke-width="6"/>
   </g>
 </svg>
 `;
@@ -291,11 +325,15 @@ async function main() {
   const iconSvgPath = path.join(root, "public", "icon.svg");
   await fs.writeFile(iconSvgPath, iconSvg);
 
-  const render = (imageSize) => sharp(Buffer.from(iconSvg)).resize(imageSize, imageSize).png();
+  const render = (imageSize, { opaque = false } = {}) => {
+    let pipeline = sharp(Buffer.from(iconSvg)).resize(imageSize, imageSize);
+    if (opaque) pipeline = pipeline.flatten({ background: black });
+    return pipeline.png({ palette: true, colors: 256, compressionLevel: 9, dither: 0 });
+  };
   await render(180).toFile(path.join(root, "public", "icons", "apple-touch-icon.png"));
   await render(192).toFile(path.join(root, "public", "icons", "icon-192.png"));
   await render(512).toFile(path.join(root, "public", "icons", "icon-512.png"));
-  await render(512).toFile(path.join(root, "public", "icons", "maskable-512.png"));
+  await render(512, { opaque: true }).toFile(path.join(root, "public", "icons", "maskable-512.png"));
   await render(1254).toFile(path.join(root, "public", "icons", "image.png"));
 
   const faviconPng = await render(32).toBuffer();

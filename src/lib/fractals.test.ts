@@ -1,5 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { artworkStepCount, buildDailyFractal, buildFractalParams, calculateArtworkProgress, generateFractalConfig } from "./fractals";
+import {
+  artworkStepCount,
+  buildDailyFractal,
+  buildFractalParams,
+  calculateArtworkProgress,
+  compactDailyFractal,
+  generateFractalConfig,
+  generateLegacyCoinPartitionArtwork,
+  materializeDailyFractalArtwork,
+  nextArtworkCompletionOffset,
+} from "./fractals";
 import type { StudyBlock, Subject, Tag } from "./types";
 
 const now = "2026-05-22T12:00:00.000Z";
@@ -55,7 +65,7 @@ describe("daily fractals", () => {
     expect(params.seed).toContain("streak-1");
     expect(second).toEqual(first);
     expect(first.artwork?.lineCount).toBe(artworkStepCount);
-    expect(first.artwork?.faces.length).toBeGreaterThan(1);
+    expect(first.artwork?.faces).toHaveLength(artworkStepCount);
     expect(first.artwork?.faces[0]?.hatchSegments.length).toBeGreaterThan(0);
   });
 
@@ -74,18 +84,122 @@ describe("daily fractals", () => {
     expect(next.createdAt).toBe(first.createdAt);
     expect(next.updatedAt).toBe("2026-05-22T13:00:00.000Z");
     expect(next.config.artwork?.lineCount).toBe(artworkStepCount);
+    expect(next.config).toEqual(first.config);
+    expect(next.generatorVersion).toBe(2);
     expect(next.visibleSteps).toBeGreaterThan(first.visibleSteps ?? 0);
   });
 
-  it("advances one step per completed block and reverts one step on missed days", () => {
+  it("reconciles a completion that arrives earlier than a concurrent artwork creator", () => {
+    const later = block("2026-05-22", 1, "completed", "2026-05-22T13:00:00.000Z");
+    const first = buildDailyFractal({ date: "2026-05-22", blocks: [later], subjects: [subject], tags: [tag], now: later.completedAt! });
+    const earlier = block("2026-05-22", 0, "completed", "2026-05-22T12:00:00.000Z");
+    const reconciled = buildDailyFractal({
+      existing: first,
+      date: "2026-05-22",
+      blocks: [later, earlier],
+      subjects: [subject],
+      tags: [tag],
+      now: earlier.completedAt!,
+    });
+
+    expect(first).toMatchObject({ visibleSteps: 1, completionOffset: 0, completionCount: 1 });
+    expect(reconciled).toMatchObject({ visibleSteps: 2, completionOffset: 0, completionCount: 2 });
+    expect(reconciled.updatedAt).toBe(first.updatedAt);
+  });
+
+  it("counts every visible completion when a later request creates the first artwork", () => {
+    const earlier = block("2026-05-22", 0, "completed", "2026-05-22T12:00:00.000Z");
+    const later = block("2026-05-22", 1, "completed", "2026-05-22T13:00:00.000Z");
+    const first = buildDailyFractal({
+      date: "2026-05-22",
+      blocks: [earlier, later],
+      subjects: [subject],
+      tags: [tag],
+      now: later.completedAt!,
+      completionOffset: 0,
+    });
+
+    expect(first).toMatchObject({ visibleSteps: 2, completionOffset: 0, completionCount: 2 });
+  });
+
+  it("can omit persisted geometry and reconstruct the same artwork from its seed", () => {
+    const fractal = buildDailyFractal({ date: "2026-05-22", blocks: [block("2026-05-22", 0)], subjects: [subject], tags: [tag], now });
+    const compact = compactDailyFractal(fractal);
+
+    expect(compact.config.artwork).toBeUndefined();
+    expect(materializeDailyFractalArtwork(compact)).toEqual(fractal.config.artwork);
+  });
+
+  it("reconstructs compact legacy artwork with the legacy algorithm", () => {
+    const fractal = buildDailyFractal({ date: "2026-05-22", blocks: [block("2026-05-22", 0)], subjects: [subject], tags: [tag], now });
+    const legacyArtwork = generateLegacyCoinPartitionArtwork(fractal.seed);
+    const legacy = compactDailyFractal({ ...fractal, generatorVersion: undefined, config: { ...fractal.config, artwork: legacyArtwork } });
+
+    expect(materializeDailyFractalArtwork(legacy)).toEqual(legacyArtwork);
+  });
+
+  it("advances one step per completed block and reverts one step for each completed missed day", () => {
     const progress = calculateArtworkProgress({
       startDate: "2026-05-20",
-      asOfDate: "2026-05-23",
+      asOfDate: "2026-05-24",
       blocks: [block("2026-05-20", 0), block("2026-05-20", 1), block("2026-05-22", 0)],
     });
 
     expect(progress.visibleSteps).toBe(1);
     expect(progress.completedAt).toBeNull();
+  });
+
+  it("does not subtract a step for the current day before that day has ended", () => {
+    const progress = calculateArtworkProgress({
+      startDate: "2026-05-20",
+      asOfDate: "2026-05-23",
+      blocks: [block("2026-05-20", 0), block("2026-05-22", 0)],
+    });
+
+    expect(progress.visibleSteps).toBe(1);
+  });
+
+  it("does not subtract a feature for a day with elapsed study", () => {
+    const studiedWithoutCompletion = { ...block("2026-05-21", 0, "paused"), elapsedSeconds: 300 };
+    const progress = calculateArtworkProgress({
+      startDate: "2026-05-20",
+      asOfDate: "2026-05-22",
+      blocks: [block("2026-05-20", 0), studiedWithoutCompletion],
+    });
+
+    expect(progress.visibleSteps).toBe(1);
+  });
+
+  it("does not subtract a feature for an active timer spanning midnight", () => {
+    const activeOvernight = {
+      ...block("2026-05-21", 0, "active"),
+      elapsedSeconds: 0,
+      startedAt: "2026-05-21T23:55:00.000Z",
+    };
+    const progress = calculateArtworkProgress({
+      startDate: "2026-05-20",
+      asOfDate: "2026-05-22",
+      blocks: [block("2026-05-20", 0), activeOvernight],
+    });
+
+    expect(progress.visibleSteps).toBe(1);
+  });
+
+  it("subtracts exactly once per missed calendar day across daylight-saving changes", () => {
+    const previousTimezone = process.env.TZ;
+    process.env.TZ = "Europe/Berlin";
+    try {
+      const progress = calculateArtworkProgress({
+        startDate: "2026-10-24",
+        asOfDate: "2026-10-27",
+        blocks: [block("2026-10-24", 0), block("2026-10-24", 1), block("2026-10-24", 2)],
+      });
+
+      expect(progress.visibleSteps).toBe(1);
+    } finally {
+      if (previousTimezone === undefined) delete process.env.TZ;
+      else process.env.TZ = previousTimezone;
+    }
   });
 
   it("starts a same-day rollover artwork from the next completed block", () => {
@@ -102,5 +216,40 @@ describe("daily fractals", () => {
     expect(next.visibleSteps).toBe(1);
     expect(next.status).toBe("active");
     expect(next.stats?.completedBlocks).toBe(1);
+  });
+
+  it("assigns concurrent rollover overflow to the next artwork exactly once", () => {
+    const completedBlocks = Array.from({ length: artworkStepCount + 1 }, (_, index) =>
+      block("2026-05-22", index, "completed", `2026-05-22T12:${String(index).padStart(2, "0")}:00.000Z`),
+    );
+    const active = buildDailyFractal({
+      date: "2026-05-22",
+      blocks: completedBlocks.slice(0, artworkStepCount - 1),
+      subjects: [subject],
+      tags: [tag],
+      now: "2026-05-22T12:22:00.000Z",
+      completionOffset: 0,
+    });
+    const completed = buildDailyFractal({
+      existing: active,
+      date: "2026-05-22",
+      blocks: completedBlocks,
+      subjects: [subject],
+      tags: [tag],
+      now: "2026-05-22T12:24:00.000Z",
+    });
+    const offset = nextArtworkCompletionOffset([completed], completedBlocks);
+    const rollover = buildDailyFractal({
+      date: "2026-05-22",
+      blocks: completedBlocks,
+      subjects: [subject],
+      tags: [tag],
+      now: "2026-05-22T12:24:00.000Z",
+      completionOffset: offset,
+    });
+
+    expect(completed).toMatchObject({ status: "completed", completionCount: artworkStepCount });
+    expect(offset).toBe(artworkStepCount);
+    expect(rollover).toMatchObject({ status: "active", visibleSteps: 1, completionOffset: artworkStepCount, completionCount: 1 });
   });
 });

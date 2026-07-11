@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { CheckCircle2, Circle, Minus, NotebookPen, Play, Plus, SkipForward, Trash2, X } from "lucide-react";
+import { CheckCircle2, ChevronDown, Circle, Minus, NotebookPen, Play, Plus, SkipForward, Trash2, X } from "lucide-react";
 import { BlockNoteEditor } from "@/components/BlockNoteEditor";
 import { OnboardingDeck } from "@/components/OnboardingDeck";
 import { FocusScreensaver } from "@/components/FocusScreensaver";
@@ -45,13 +45,36 @@ export default function TodayPage() {
   const [isAddingBlock, setIsAddingBlock] = useState(false);
   const lastElapsedByBlockRef = useRef<Record<string, number>>({});
   const beepedBlockIdsRef = useRef<Set<string>>(new Set());
+  const activeBlock = todayBlocks.find((block) => block.status === "active");
+  const activeBlockId = activeBlock?.id;
+  const activeBlockStartedAt = activeBlock?.startedAt;
 
   useEffect(() => {
-    const timer = window.setInterval(() => setNow(new Date()), 1000);
-    return () => window.clearInterval(timer);
-  }, []);
+    if (!activeBlockId) return;
 
-  const activeBlock = todayBlocks.find((block) => block.status === "active");
+    let timer: number | null = null;
+    const stop = () => {
+      if (timer === null) return;
+      window.clearInterval(timer);
+      timer = null;
+    };
+    const start = () => {
+      if (document.visibilityState !== "visible" || timer !== null) return;
+      setNow(new Date());
+      timer = window.setInterval(() => setNow(new Date()), 1000);
+    };
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") start();
+      else stop();
+    };
+
+    start();
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => {
+      stop();
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [activeBlockId, activeBlockStartedAt]);
 
   useEffect(() => {
     if (!settings?.screensaverEnabled || !activeBlock) return;
@@ -468,7 +491,8 @@ function StudyBlockCard({
   const activeTags = tags.filter((tag) => !tag.archivedAt);
   const activeSubjects = subjects.filter((subject) => !subject.archivedAt);
   const subjectColor = resolveSubjectColor(subject?.color);
-  const previousSubjectNote = findPreviousSubjectNote(block, allBlocks);
+  const controlsVisible = expanded || block.status === "active";
+  const previousSubjectNote = controlsVisible ? findPreviousSubjectNote(block, allBlocks) : undefined;
   const subjectTextColor = resolveSubjectTextColor(subject?.color);
   const stateClass =
     block.status === "active"
@@ -520,7 +544,24 @@ function StudyBlockCard({
           </div>
           <h2 className="mt-2 text-xl font-bold">{subject?.name}</h2>
         </div>
-        <div className="font-mono text-lg font-bold">{formatDuration(elapsed)}</div>
+        <div className="flex items-center gap-2">
+          <div className="font-mono text-lg font-bold">{formatDuration(elapsed)}</div>
+          {block.status !== "active" ? (
+            <button
+              type="button"
+              aria-expanded={controlsVisible}
+              aria-controls={`block-controls-${block.id}`}
+              aria-label={controlsVisible ? t.actions.collapse : t.actions.expand}
+              onClick={(event) => {
+                event.stopPropagation();
+                setExpanded((value) => !value);
+              }}
+              className="grid h-9 w-9 place-items-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
+            >
+              <ChevronDown className={`h-4 w-4 transition-transform ${controlsVisible ? "rotate-180" : ""}`} aria-hidden />
+            </button>
+          ) : null}
+        </div>
       </div>
       <div className="relative mt-3 flex flex-wrap gap-2">
         {blockTags.map((tag) => (
@@ -528,9 +569,10 @@ function StudyBlockCard({
         ))}
       </div>
       <AnimatePresence initial={false}>
-        {(expanded || block.status === "active") && (
+        {controlsVisible && (
           <motion.div
             key="controls"
+            id={`block-controls-${block.id}`}
             initial={reduceMotion ? false : { height: 0, opacity: 0 }}
             animate={{ height: "auto", opacity: 1 }}
             exit={reduceMotion ? undefined : { height: 0, opacity: 0 }}
@@ -590,7 +632,7 @@ function StudyBlockCard({
                 <SkipForward className="h-4 w-4" aria-hidden />
                 {t.actions.skip}
               </Button>
-              <Button variant="danger" onClick={onDelete} disabled={block.status === "active"}>
+              <Button variant="danger" onClick={onDelete} disabled={block.status === "active" || block.status === "completed" || block.elapsedSeconds > 0 || Boolean(block.completedAt)}>
                 <Trash2 className="h-4 w-4" aria-hidden />
                 {t.today.deleteBlock}
               </Button>

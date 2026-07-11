@@ -3,6 +3,7 @@ import { resolveSubjectColor, resolveTagColor } from "./colors";
 import { rangeStart } from "./date";
 import type {
   BreakdownItem,
+  CalendarDaySummary,
   StatsFilters,
   StatsSummary,
   StudyBlock,
@@ -11,6 +12,29 @@ import type {
   Tag,
   TrendItem,
 } from "./types";
+
+export function buildCalendarSummary(days: StudyDay[], blocks: StudyBlock[]): CalendarDaySummary[] {
+  const totalsByDate = new Map<string, { completedBlocks: number; studiedSeconds: number }>();
+
+  for (const block of blocks) {
+    const totals = totalsByDate.get(block.date) ?? { completedBlocks: 0, studiedSeconds: 0 };
+    totals.studiedSeconds += block.elapsedSeconds;
+    if (block.status === "completed") totals.completedBlocks += 1;
+    totalsByDate.set(block.date, totals);
+  }
+
+  return days
+    .map((day) => {
+      const totals = totalsByDate.get(day.date);
+      return {
+        date: day.date,
+        plannedBlocks: day.plannedBlockCount,
+        completedBlocks: totals?.completedBlocks ?? 0,
+        studiedSeconds: totals?.studiedSeconds ?? 0,
+      };
+    })
+    .sort((a, b) => a.date.localeCompare(b.date));
+}
 
 function studiedSeconds(block: StudyBlock) {
   return block.status === "completed" || block.elapsedSeconds > 0 ? block.elapsedSeconds : 0;

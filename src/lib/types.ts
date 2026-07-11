@@ -141,11 +141,14 @@ export type ArtworkStats = {
 export type DailyFractal = {
   id: string;
   date: string;
+  generatorVersion?: number;
   startDate?: string;
   endDate?: string | null;
   status?: ArtworkLifecycleStatus;
   totalSteps?: number;
   visibleSteps?: number;
+  completionOffset?: number;
+  completionCount?: number;
   stats?: ArtworkStats;
   seed: string;
   params: FractalParams;

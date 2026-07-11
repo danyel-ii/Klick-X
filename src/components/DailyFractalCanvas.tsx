@@ -1,7 +1,9 @@
 "use client";
 
 import { clsx } from "clsx";
-import type { ArtworkPoint, CoinPartitionArtwork, DailyFractal } from "@/lib/types";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
+import { artworkGeneratorVersion, generateCoinPartitionArtwork, generateLegacyCoinPartitionArtwork } from "@/lib/fractals";
+import type { ArtworkPoint, ArtworkSegment, CoinPartitionArtwork, DailyFractal } from "@/lib/types";
 
 function fmt(value: number) {
   return Number.isInteger(value) ? String(value) : value.toFixed(4).replace(/0+$/, "").replace(/\.$/, "");
@@ -13,19 +15,24 @@ function polygonPath(points: ArtworkPoint[]) {
   return [`M ${fmt(first.x)} ${fmt(first.y)}`, ...rest.map((point) => `L ${fmt(point.x)} ${fmt(point.y)}`), "Z"].join(" ");
 }
 
-function LegacyArtwork({ fractal }: { fractal: DailyFractal }) {
-  const color = fractal.config.palette[0] ?? "var(--accent)";
-  return (
-    <div className="grid h-full min-h-44 w-full place-items-center rounded-2xl bg-[var(--surface)]">
-      <div className="h-24 w-24 rounded-full border border-[var(--app-border)]" style={{ background: `radial-gradient(circle, ${color}, transparent 68%)` }} />
-    </div>
-  );
+function hatchPath(segments: ArtworkSegment[]) {
+  return segments
+    .map((segment) => `M ${fmt(segment.a.x)} ${fmt(segment.a.y)} L ${fmt(segment.b.x)} ${fmt(segment.b.y)}`)
+    .join(" ");
 }
 
 function FinalArtworkSvg({ artwork, label, visibleSteps }: { artwork: CoinPartitionArtwork; label: string; visibleSteps: number }) {
-  const visibleFaceCount = visibleSteps >= artwork.lineCount ? artwork.faces.length : Math.min(artwork.faces.length, visibleSteps);
-  const visibleFaces = artwork.faces.slice(0, visibleFaceCount);
-  const pendingFaces = artwork.faces.slice(visibleFaceCount);
+  const faces = useMemo(
+    () =>
+      artwork.faces.map((face) => ({
+        face,
+        polygon: polygonPath(face.polygon),
+        hatches: hatchPath(face.hatchSegments),
+      })),
+    [artwork],
+  );
+  const visibleFaceCount = visibleSteps >= artwork.lineCount ? faces.length : Math.min(faces.length, visibleSteps);
+  const visibleFaces = faces.slice(0, visibleFaceCount);
   return (
     <svg
       role="img"
@@ -38,24 +45,15 @@ function FinalArtworkSvg({ artwork, label, visibleSteps }: { artwork: CoinPartit
       data-visible-steps={visibleSteps}
     >
       <rect x="0" y="0" width={artwork.pageWidth} height={artwork.pageHeight} fill="white" />
-      <g id="pending-faces" opacity="0.18">
-        {pendingFaces.map((face) => (
-          <path key={face.id} d={polygonPath(face.polygon)} fill="none" stroke="black" strokeWidth="0.12" />
-        ))}
-      </g>
       <g id="final-faces">
-        {visibleFaces.map((face) => {
+        {visibleFaces.map(({ face, polygon, hatches }) => {
           const foreground = face.inverted ? "white" : "black";
           const fill = face.color;
           return (
             <g key={face.id}>
-              <path d={polygonPath(face.polygon)} fill={fill} fillOpacity={face.inverted ? 0.9 : 0.72} fillRule="evenodd" stroke="none" data-color={face.color} data-polarity={face.inverted ? "inverted" : "normal"} />
-              <g fill="none" stroke={foreground} strokeLinecap="butt" strokeWidth="0.18">
-                {face.hatchSegments.map((segment, index) => (
-                  <polyline key={index} points={`${fmt(segment.a.x)},${fmt(segment.a.y)} ${fmt(segment.b.x)},${fmt(segment.b.y)}`} />
-                ))}
-              </g>
-              <path d={polygonPath(face.polygon)} fill="none" fillRule="evenodd" stroke={foreground} strokeWidth="0.15" />
+              <path d={polygon} fill={fill} fillOpacity={face.inverted ? 0.9 : 0.72} fillRule="evenodd" stroke="none" data-color={face.color} data-polarity={face.inverted ? "inverted" : "normal"} />
+              {hatches ? <path d={hatches} fill="none" stroke={foreground} strokeLinecap="butt" strokeWidth="0.18" data-hatches="true" /> : null}
+              <path d={polygon} fill="none" fillRule="evenodd" stroke={foreground} strokeWidth="0.15" />
             </g>
           );
         })}
@@ -64,7 +62,7 @@ function FinalArtworkSvg({ artwork, label, visibleSteps }: { artwork: CoinPartit
   );
 }
 
-export function DailyFractalCanvas({
+export const DailyFractalCanvas = memo(function DailyFractalCanvas({
   fractal,
   label,
   className,
@@ -73,12 +71,60 @@ export function DailyFractalCanvas({
   label: string;
   className?: string;
 }) {
-  const artwork = fractal.config.artwork;
-  const totalSteps = fractal.totalSteps ?? artwork?.lineCount ?? 1;
+  const artworkSeed = fractal.config.seed || fractal.seed;
+  const persistedArtwork = fractal.config.artwork;
+  const generatorVersion = fractal.generatorVersion ?? 1;
+  const artwork = useMemo(
+    () => persistedArtwork ?? (generatorVersion >= artworkGeneratorVersion ? generateCoinPartitionArtwork(artworkSeed) : generateLegacyCoinPartitionArtwork(artworkSeed)),
+    [artworkSeed, generatorVersion, persistedArtwork],
+  );
+  const totalSteps = fractal.totalSteps ?? artwork.lineCount ?? 1;
   const visibleSteps = Math.max(0, Math.min(totalSteps, fractal.visibleSteps ?? totalSteps));
+  const renderedSteps = generatorVersion < artworkGeneratorVersion && fractal.status === "completed" ? artwork.faces.length : visibleSteps;
   return (
     <div className={clsx("overflow-hidden rounded-2xl bg-[var(--surface)]", className)}>
-      {artwork ? <FinalArtworkSvg artwork={artwork} label={label} visibleSteps={visibleSteps} /> : <LegacyArtwork fractal={fractal} />}
+      <FinalArtworkSvg artwork={artwork} label={label} visibleSteps={renderedSteps} />
+    </div>
+  );
+});
+
+export function LazyDailyFractalCanvas({
+  fractal,
+  label,
+  className,
+}: {
+  fractal: DailyFractal;
+  label: string;
+  className?: string;
+}) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [visible, setVisible] = useState(false);
+
+  useEffect(() => {
+    const element = containerRef.current;
+    if (!element || typeof IntersectionObserver === "undefined") {
+      setVisible(true);
+      return;
+    }
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (!entry?.isIntersecting) return;
+        setVisible(true);
+        observer.disconnect();
+      },
+      { rootMargin: "240px" },
+    );
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+
+  return (
+    <div ref={containerRef} className={clsx("min-h-44", className)}>
+      {visible ? (
+        <DailyFractalCanvas fractal={fractal} label={label} className="h-full" />
+      ) : (
+        <div className="h-full min-h-44 rounded-2xl bg-[var(--surface)]" aria-hidden />
+      )}
     </div>
   );
 }

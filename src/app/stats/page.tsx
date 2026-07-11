@@ -1,32 +1,57 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { memo, useEffect, useMemo, useState } from "react";
 import { format, subDays } from "date-fns";
 import { Area, AreaChart, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { Input, PageHeader, SurfaceCard, TagPill } from "@/components/ui";
+import { buildStatsSummary } from "@/lib/analytics";
 import { localDateKey } from "@/lib/date";
 import { useAppStore } from "@/lib/store";
 import { formatMinutes } from "@/lib/timer";
 import type { StatsRange } from "@/lib/types";
 
 export default function StatsPage() {
-  const { t, stats, loadStats, subjects, tags, settings, allBlocks } = useAppStore();
+  const { t, subjects, tags, settings, allDays, allBlocks } = useAppStore();
   const [range, setRange] = useState<StatsRange>("30d");
   const [subjectId, setSubjectId] = useState("");
   const [tagId, setTagId] = useState("");
   const [noteQuery, setNoteQuery] = useState("");
+  const [appliedNoteQuery, setAppliedNoteQuery] = useState("");
 
   useEffect(() => {
-    void loadStats({ range, subjectId: subjectId || undefined, tagId: tagId || undefined, noteQuery: noteQuery || undefined });
-  }, [loadStats, noteQuery, range, subjectId, tagId]);
+    const timer = window.setTimeout(() => setAppliedNoteQuery(noteQuery), 350);
+    return () => window.clearTimeout(timer);
+  }, [noteQuery]);
 
-  const subjectData = stats?.timeBySubject.map((item) => ({ name: item.name, minutes: Math.round(item.seconds / 60), color: item.color })) ?? [];
-  const tagData = stats?.timeByTag.map((item) => ({ name: item.name, minutes: Math.round(item.seconds / 60), color: item.color })) ?? [];
-  const consistencyDays = Array.from({ length: 49 }, (_, index) => {
-    const date = localDateKey(subDays(new Date(), 48 - index));
-    const seconds = allBlocks.filter((block) => block.date === date).reduce((sum, block) => sum + block.elapsedSeconds, 0);
-    return { date, seconds };
-  });
+  const stats = useMemo(
+    () =>
+      buildStatsSummary({
+        days: allDays,
+        blocks: allBlocks,
+        subjects,
+        tags,
+        filters: {
+          range,
+          subjectId: subjectId || undefined,
+          tagId: tagId || undefined,
+          noteQuery: appliedNoteQuery || undefined,
+        },
+        todayKey: localDateKey(),
+      }),
+    [allBlocks, allDays, appliedNoteQuery, range, subjectId, subjects, tagId, tags],
+  );
+  const subjectData = useMemo(() => stats.timeBySubject.map((item) => ({ name: item.name, minutes: Math.round(item.seconds / 60), color: item.color })), [stats.timeBySubject]);
+  const tagData = useMemo(() => stats.timeByTag.map((item) => ({ name: item.name, minutes: Math.round(item.seconds / 60), color: item.color })), [stats.timeByTag]);
+  const weeklyData = useMemo(() => stats.weeklyTrend.map((item) => ({ name: item.label, value: item.completedBlocks })), [stats.weeklyTrend]);
+  const monthlyData = useMemo(() => stats.monthlyTrend.map((item) => ({ name: item.label, value: item.completedBlocks })), [stats.monthlyTrend]);
+  const consistencyDays = useMemo(() => {
+    const secondsByDate = new Map<string, number>();
+    for (const block of allBlocks) secondsByDate.set(block.date, (secondsByDate.get(block.date) ?? 0) + block.elapsedSeconds);
+    return Array.from({ length: 49 }, (_, index) => {
+      const date = localDateKey(subDays(new Date(), 48 - index));
+      return { date, seconds: secondsByDate.get(date) ?? 0 };
+    });
+  }, [allBlocks]);
 
   return (
     <>
@@ -74,8 +99,8 @@ export default function StatsPage() {
           <div className="mt-5 grid gap-5 lg:grid-cols-2">
             <DonutChartCard title={t.stats.bySubject} data={subjectData} empty={t.stats.noData} />
             <DonutChartCard title={t.stats.byTag} data={tagData} empty={t.stats.noData} />
-            <AreaChartCard title={t.stats.weekly} data={stats.weeklyTrend.map((item) => ({ name: item.label, value: item.completedBlocks }))} empty={t.stats.noData} />
-            <AreaChartCard title={t.stats.monthly} data={stats.monthlyTrend.map((item) => ({ name: item.label, value: item.completedBlocks }))} empty={t.stats.noData} />
+            <AreaChartCard title={t.stats.weekly} data={weeklyData} empty={t.stats.noData} />
+            <AreaChartCard title={t.stats.monthly} data={monthlyData} empty={t.stats.noData} />
           </div>
           <SurfaceCard className="mt-5">
             <h2 className="text-lg font-bold">{t.stats.consistency}</h2>
@@ -133,7 +158,7 @@ function StatCard({ label, value, helper }: { label: string; value: string; help
   );
 }
 
-function DonutChartCard({ title, data, empty }: { title: string; data: { name: string; minutes: number; color: string }[]; empty: string }) {
+const DonutChartCard = memo(function DonutChartCard({ title, data, empty }: { title: string; data: { name: string; minutes: number; color: string }[]; empty: string }) {
   return (
     <SurfaceCard>
       <h2 className="text-lg font-bold">{title}</h2>
@@ -155,9 +180,9 @@ function DonutChartCard({ title, data, empty }: { title: string; data: { name: s
       )}
     </SurfaceCard>
   );
-}
+});
 
-function AreaChartCard({ title, data, empty }: { title: string; data: { name: string; value: number }[]; empty: string }) {
+const AreaChartCard = memo(function AreaChartCard({ title, data, empty }: { title: string; data: { name: string; value: number }[]; empty: string }) {
   return (
     <SurfaceCard>
       <h2 className="text-lg font-bold">{title}</h2>
@@ -184,4 +209,4 @@ function AreaChartCard({ title, data, empty }: { title: string; data: { name: st
       )}
     </SurfaceCard>
   );
-}
+});
