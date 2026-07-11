@@ -326,10 +326,11 @@ async function main() {
   const iconSvgPath = path.join(root, "public", "icon.svg");
   await fs.writeFile(iconSvgPath, iconSvg);
 
-  const render = (imageSize, { opaque = true } = {}) => {
+  const render = (imageSize, { opaque = true, palette = true } = {}) => {
     let pipeline = sharp(Buffer.from(iconSvg)).resize(imageSize, imageSize);
     if (opaque) pipeline = pipeline.flatten({ background: black });
-    return pipeline.png({ palette: true, colors: 256, compressionLevel: 9, dither: 0 });
+    if (!palette) pipeline = pipeline.ensureAlpha();
+    return pipeline.png({ palette, colors: 256, compressionLevel: 9, dither: 0 });
   };
   await render(512).toFile(path.join(root, "public", "icon.png"));
   await render(180).toFile(path.join(root, "public", "icons", "apple-touch-icon.png"));
@@ -342,7 +343,7 @@ async function main() {
   await render(512, { opaque: true }).toFile(path.join(root, "public", "icons", "maskable-512-grayscale.png"));
   await render(1254).toFile(path.join(root, "public", "icons", "image.png"));
 
-  const faviconPng = await render(32).toBuffer();
+  const faviconPng = await render(32, { palette: false }).toBuffer();
   await fs.writeFile(path.join(root, "src", "app", "favicon.ico"), icoFromPng(faviconPng, 32));
 }
 
