@@ -3,11 +3,12 @@
 import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { CheckCircle2, Circle, Minus, NotebookPen, Play, Plus, SkipForward, Trash2, X } from "lucide-react";
+import { BlockNoteEditor } from "@/components/BlockNoteEditor";
 import { OnboardingDeck } from "@/components/OnboardingDeck";
 import { FocusScreensaver } from "@/components/FocusScreensaver";
 import { ActiveBlockPanel } from "@/components/ActiveBlockPanel";
 import { DailyFractalCanvas } from "@/components/DailyFractalCanvas";
-import { Button, PageHeader, SubjectPill, SurfaceCard, TagPill, Textarea } from "@/components/ui";
+import { Button, PageHeader, SubjectPill, SurfaceCard, TagPill } from "@/components/ui";
 import { resolveSubjectColor, resolveSubjectTextColor } from "@/lib/colors";
 import { localDateKey } from "@/lib/date";
 import { clearLockScreenTimerNotification, syncLockScreenTimerNotification } from "@/lib/lock-screen-notifications";
@@ -572,7 +573,7 @@ function StudyBlockCard({
                 <p className="mt-2 whitespace-pre-wrap text-[var(--foreground)]">{previousSubjectNote.note}</p>
               </div>
             ) : null}
-            <Textarea value={block.note ?? ""} onChange={(event) => onNote(event.target.value)} placeholder={t.today.notePlaceholder} className="mt-2 w-full bg-[var(--glass-strong)]" />
+            <BlockNoteEditor value={block.note ?? ""} onCommit={onNote} placeholder={t.today.notePlaceholder} className="mt-2 w-full bg-[var(--glass-strong)]" />
             <div className="mt-4 flex flex-wrap gap-2">
               {block.status === "active" ? (
                 <Button onClick={onPause}>{t.actions.pause}</Button>

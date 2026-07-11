@@ -6,7 +6,8 @@ import { resolveSubjectColor } from "@/lib/colors";
 import { useAppStore } from "@/lib/store";
 import { formatDuration, visibleElapsedSeconds } from "@/lib/timer";
 import type { StudyBlock, Subject, Tag } from "@/lib/types";
-import { Button, TagPill, Textarea } from "./ui";
+import { BlockNoteEditor } from "./BlockNoteEditor";
+import { Button, TagPill } from "./ui";
 
 export function FocusScreensaver({
   block,
@@ -92,7 +93,7 @@ export function FocusScreensaver({
             {t.today.exitFocus}
           </Button>
         </div>
-        <Textarea value={note} onChange={(event) => setNote(event.target.value)} className="mt-6 w-full border-white/15 bg-white/10 text-left text-slate-50 placeholder:text-slate-400" placeholder={t.today.notePlaceholder} />
+        <BlockNoteEditor value={note} onCommit={setNote} className="mt-6 w-full border-white/15 bg-white/10 text-left text-slate-50 placeholder:text-slate-400" placeholder={t.today.notePlaceholder} />
       </section>
     </div>
   );
