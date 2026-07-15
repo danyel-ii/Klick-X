@@ -1,12 +1,11 @@
-const CACHE_VERSION = "study-blocks-v5-grayscale-icons";
+const CACHE_VERSION = "study-blocks-v6-klick-x-icon";
 const APP_SHELL = [
   "/login",
-  "/manifest.webmanifest?v=grayscale-20260711",
-  "/icon.png",
-  "/icon.svg?v=grayscale-20260711",
-  "/icons/icon-192-grayscale.png",
-  "/icons/icon-512-grayscale.png",
-  "/icons/maskable-512-grayscale.png",
+  "/manifest.webmanifest?v=klick-x-icon-20260715",
+  "/icon.png?v=klick-x-20260715",
+  "/icons/icon-192-grayscale.png?v=klick-x-20260715",
+  "/icons/icon-512-grayscale.png?v=klick-x-20260715",
+  "/icons/maskable-512-grayscale.png?v=klick-x-20260715",
 ];
 const DATABASE_NAME = "study-blocks";
 const TIMER_NOTIFICATION_TAG = "study-blocks-active-timer";
@@ -99,8 +98,8 @@ async function showTimerNotification(payload) {
     renotify: false,
     requireInteraction: true,
     silent: true,
-    badge: "/icons/icon-192-grayscale.png",
-    icon: "/icons/icon-192-grayscale.png",
+    badge: "/icons/icon-192-grayscale.png?v=klick-x-20260715",
+    icon: "/icons/icon-192-grayscale.png?v=klick-x-20260715",
     data: {
       blockId: payload.blockId,
       url: "/today",
