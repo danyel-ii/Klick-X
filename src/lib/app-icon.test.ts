@@ -39,4 +39,34 @@ describe("app icon assets", () => {
     expect(favicon.subarray(embeddedPngOffset, embeddedPngOffset + pngSignature.length)).toEqual(pngSignature);
     expect(favicon[embeddedPngOffset + 25]).toBe(6);
   });
+
+  it("uses the shared warm ivory and near-black palette at the reference scale", async () => {
+    const { data, info } = await sharp(join(process.cwd(), "public/icon-source.png"))
+      .removeAlpha()
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+    const colors = new Set<string>();
+    let minX = info.width;
+    let minY = info.height;
+    let maxX = -1;
+    let maxY = -1;
+
+    for (let index = 0; index < data.length; index += info.channels) {
+      const color = `${data[index]},${data[index + 1]},${data[index + 2]}`;
+      colors.add(color);
+      if (color !== "23,22,17") continue;
+
+      const pixel = index / info.channels;
+      const x = pixel % info.width;
+      const y = Math.floor(pixel / info.width);
+      minX = Math.min(minX, x);
+      minY = Math.min(minY, y);
+      maxX = Math.max(maxX, x);
+      maxY = Math.max(maxY, y);
+    }
+
+    expect(colors).toEqual(new Set(["244,239,228", "23,22,17"]));
+    expect((maxX - minX + 1) / info.width).toBeCloseTo(0.63, 2);
+    expect((maxY - minY + 1) / info.height).toBeCloseTo(0.62, 2);
+  });
 });

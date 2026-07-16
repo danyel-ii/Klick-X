@@ -3,6 +3,7 @@ import path from "node:path";
 import sharp from "sharp";
 
 const sourceSize = 1254;
+const iconBackground = "#f4efe4";
 
 function icoFromPng(pngBuffer, imageSize) {
   const header = Buffer.alloc(6);
@@ -27,7 +28,7 @@ async function main() {
   const output = (relativePath, size) =>
     sharp(source)
       .resize(size, size, { fit: "cover" })
-      .flatten({ background: "#999999" })
+      .flatten({ background: iconBackground })
       .png({ compressionLevel: 9 })
       .toFile(path.join(root, relativePath));
 
