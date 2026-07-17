@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 import { isAuthorizedRequest, unauthorized } from "@/lib/server/api-auth";
+import { ApiValidationError, validateAction, validateStatsFilters } from "@/lib/server/api-validation";
+import { assertSameOrigin, readJsonBody, RequestSecurityError } from "@/lib/server/request-security";
 import * as repo from "@/lib/server/study-repository";
-import type { ExportPayload, Locale, StatsFilters, Subject, Tag } from "@/lib/types";
+import type { ExportPayload, Locale, Subject, Tag } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -16,15 +18,18 @@ function requestDateKey(request: Request) {
 function apiError(error: unknown) {
   const message = error instanceof Error ? error.message : "Database unavailable.";
   if (
+    error instanceof ApiValidationError ||
+    error instanceof RequestSecurityError ||
     message.startsWith("Invalid import payload") ||
     message === "Every planned block needs a subject." ||
     message === "Subject is required." ||
     message === "Active blocks cannot be deleted." ||
     message === "Studied blocks cannot be deleted."
   ) {
-    return NextResponse.json({ error: message }, { status: 400 });
+    return NextResponse.json({ error: message }, { status: error instanceof RequestSecurityError ? error.status : 400 });
   }
-  return NextResponse.json({ error: message }, { status: 503 });
+  console.error("Study API request failed", error);
+  return NextResponse.json({ error: "The study database is temporarily unavailable." }, { status: 503 });
 }
 
 export async function GET(request: Request) {
@@ -41,11 +46,9 @@ export async function POST(request: Request) {
   if (!(await isAuthorizedRequest(request))) return unauthorized();
 
   try {
-    const body = (await request.json().catch(() => null)) as { action?: unknown; payload?: unknown } | null;
-    if (!body || typeof body.action !== "string") {
-      return NextResponse.json({ error: "Valid action is required." }, { status: 400 });
-    }
-    const payload = body.payload as Record<string, unknown> | undefined;
+    assertSameOrigin(request);
+    const body = validateAction(await readJsonBody(request, 6 * 1024 * 1024));
+    const payload = body.payload as Record<string, unknown>;
 
     switch (body.action) {
       case "setLocale":
@@ -124,8 +127,6 @@ export async function POST(request: Request) {
         if (payload?.confirm !== "RESET") return NextResponse.json({ error: "Reset confirmation is required." }, { status: 400 });
         await repo.resetLocalData();
         break;
-      default:
-        return NextResponse.json({ error: `Unknown action: ${body.action}` }, { status: 400 });
     }
 
     return NextResponse.json(await repo.getSnapshot(requestDateKey(request)));
@@ -138,8 +139,8 @@ export async function PUT(request: Request) {
   if (!(await isAuthorizedRequest(request))) return unauthorized();
 
   try {
-    const filters = (await request.json().catch(() => null)) as StatsFilters | null;
-    if (!filters) return NextResponse.json({ error: "Valid filters are required." }, { status: 400 });
+    assertSameOrigin(request);
+    const filters = validateStatsFilters(await readJsonBody(request, 16 * 1024));
     return NextResponse.json(await repo.getStats(filters, requestDateKey(request)));
   } catch (error) {
     return apiError(error);

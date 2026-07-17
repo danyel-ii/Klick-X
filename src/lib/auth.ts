@@ -14,7 +14,7 @@ function authPassword() {
 }
 
 function authSecret() {
-  return process.env.STUDY_BLOCKS_AUTH_SECRET ?? process.env.STUDY_BLOCKS_PASSWORD ?? "";
+  return process.env.STUDY_BLOCKS_AUTH_SECRET ?? "";
 }
 
 function bytesToBase64Url(bytes: Uint8Array) {
@@ -47,7 +47,7 @@ function constantTimeEqual(left: Uint8Array, right: Uint8Array) {
 async function signingKey() {
   const secret = authSecret();
   if (!secret) {
-    throw new Error("STUDY_BLOCKS_AUTH_SECRET or STUDY_BLOCKS_PASSWORD is required.");
+    throw new Error("STUDY_BLOCKS_AUTH_SECRET is required.");
   }
   return crypto.subtle.importKey("raw", encoder.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
 }

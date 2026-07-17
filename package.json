@@ -10,7 +10,11 @@
     "test": "vitest run"
   },
   "overrides": {
-    "postcss": "$postcss"
+    "postcss": "8.5.19",
+    "@babel/core": "7.29.7",
+    "js-yaml": "4.3.0",
+    "undici": "7.28.0",
+    "vite": "8.1.5"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.1.0",
@@ -36,7 +40,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.2.6",
     "jsdom": "^29.1.1",
-    "postcss": "^8.5.15",
+    "postcss": "8.5.19",
     "tailwindcss": "^4",
     "typescript": "^5",
     "vitest": "^4.1.7"

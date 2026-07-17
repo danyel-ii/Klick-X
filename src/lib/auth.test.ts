@@ -30,4 +30,10 @@ describe("auth", () => {
     await expect(verifyAuthToken("not-base64.%%%")).resolves.toBe(false);
     await expect(verifyAuthToken("only-one-part")).resolves.toBe(false);
   });
+
+  it("does not reuse the login password as a session-signing secret", async () => {
+    delete process.env.STUDY_BLOCKS_AUTH_SECRET;
+    await expect(verifyAuthToken("payload.signature")).resolves.toBe(false);
+    await expect(createAuthToken()).rejects.toThrow("STUDY_BLOCKS_AUTH_SECRET is required");
+  });
 });
